@@ -6,7 +6,7 @@
 ## 확정된 방향 (2026-06-27)
 
 | 결정 | 선택 | 이유 |
-|------|------|------|
+| --- | --- | --- |
 | 배포 형태 | **독립 CLI + 마법사** (`pouch …`) | "남이 만든 정답 세트"가 아닌 내 손에 맞는 독립 도구. README 비전에 가장 충실 |
 | 구현 스택 | **Python** | 마법사 UX, 파일 조작, 메모리 파싱에 강함. macOS 기본 탑재 |
 | 첫 MVP | **메모리 레이어** | "쓸수록 진화한다"는 핵심 차별점의 토대. 여기부터 깔아야 나머지가 진화함 |
@@ -39,19 +39,20 @@
 
 > 목표: 에이전트가 무조건 참고하고, 쓸수록 쌓이는 "나만의 기억".
 
-- [ ] 메모리 저장소 설계 — `~/.pouch/memory/` (글로벌) + 프로젝트 스코프
-- [ ] 메모리 스키마 — frontmatter(`name`, `type`, `description`, `scope`, `weight`, `created`) + 본문
+- [x] 메모리 저장소 설계 — `~/.pouch/memory/` (글로벌) + 프로젝트 `<repo>/.pouch/memory/`
+- [x] 메모리 스키마 — frontmatter(`name`, `type`, `description`, `scope`, `weight`, `created`) + 본문
   - `type`: `user` / `feedback` / `project` / `reference` (Claude 네이티브 분류와 호환)
-- [ ] `MEMORY.md` 인덱스 자동 생성/갱신 (한 줄 한 메모리)
-- [ ] CLI
-  - `pouch memory add` — 새 기억 저장
-  - `pouch memory list` — 인덱스 보기
-  - `pouch memory recall <query>` — 관련 기억 회상
+- [x] `MEMORY.md` 인덱스 자동 생성/갱신 (쓰기 후 자동 reindex)
+- [x] CLI
+  - `pouch memory add` — 새 기억 저장 (비대화형 플래그)
+  - `pouch memory list` — 스코프별 목록
+  - `pouch memory recall <query>` — 키워드 회상 (시맨틱은 Phase 4)
   - `pouch memory forget <name>` — 틀린 기억 삭제
-- [ ] **"무조건 참고" 메커니즘** — SessionStart hook이 pouch 메모리를 컨텍스트에 주입
-- [ ] 중복 방지 — 같은 사실은 갱신, 새로 만들지 않음
+- [x] 중복 방지 — 같은 이름은 덮어씀(멱등 저장)
+- [ ] **"무조건 참고" 메커니즘** — SessionStart hook이 pouch 메모리를 컨텍스트에 주입 ← 다음 조각
 
 **산출물:** "내 에이전트가 나를 기억한다"는 첫 경험. 🌊 진화의 토대.
+**진행:** 코어(모델·저장소·CLI·인덱스) 완료 — 31 tests. hook 주입만 남음.
 
 ---
 

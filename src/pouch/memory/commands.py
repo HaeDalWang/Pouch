@@ -1,0 +1,97 @@
+"""`pouch memory` 서브커맨드 — 에이전트가 한 줄로 호출하는 비대화형 인터페이스."""
+
+from __future__ import annotations
+
+import typer
+from rich.console import Console
+
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+from pouch.memory.recall import recall as recall_fn
+from pouch.memory.store import MemoryStore
+
+app = typer.Typer(
+    help="🧠 메모리 — 쓸수록 쌓이는 개인 기억.",
+    no_args_is_help=True,
+)
+console = Console()
+
+
+def _store() -> MemoryStore:
+    return MemoryStore()
+
+
+@app.command("add")
+def add(
+    name: str = typer.Option(..., "--name", "-n", help="메모리 식별자(파일명이 됨)."),
+    description: str = typer.Option(..., "--description", "-d", help="한 줄 요약."),
+    body: str = typer.Option(..., "--body", "-b", help="기억할 내용 본문."),
+    mem_type: MemoryType = typer.Option(MemoryType.PROJECT, "--type", "-t", help="기억의 성격."),
+    scope: MemoryScope = typer.Option(MemoryScope.PROJECT, "--scope", "-s", help="적용 범위."),
+) -> None:
+    """새 기억을 담는다(같은 이름은 덮어씀)."""
+    entry = MemoryEntry(
+        name=name,
+        description=description,
+        body=body,
+        type=mem_type,
+        scope=scope,
+    )
+    try:
+        path = _store().save(entry)
+    except ValueError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]✓[/green] 저장: [bold]{name}[/bold] → {path}")
+
+
+@app.command("list")
+def list_memories() -> None:
+    """담긴 기억을 스코프별로 보여준다."""
+    entries = list(_store().list())
+    if not entries:
+        console.print("비어있는 주머니입니다. [cyan]pouch memory add[/cyan] 로 첫 기억을 담아보세요.")
+        return
+    for scope in (MemoryScope.GLOBAL, MemoryScope.PROJECT):
+        scoped = sorted(
+            (entry for entry in entries if entry.scope is scope),
+            key=lambda entry: entry.name,
+        )
+        if not scoped:
+            continue
+        console.print(f"\n[bold]{scope.value}[/bold]")
+        for entry in scoped:
+            console.print(f"  • [cyan]{entry.name}[/cyan] ({entry.type.value}) — {entry.description}")
+
+
+@app.command("recall")
+def recall_memories(
+    query: str = typer.Argument(..., help="검색어(키워드)."),
+    limit: int = typer.Option(5, "--limit", "-l", help="최대 결과 수."),
+) -> None:
+    """기억을 키워드로 회상한다."""
+    hits = recall_fn(_store().list(), query, limit=limit)
+    if not hits:
+        console.print(f"'{query}' 에 맞는 기억이 없습니다.")
+        return
+    for entry in hits:
+        console.print(f"• [cyan]{entry.name}[/cyan] ({entry.scope.value}) — {entry.description}")
+
+
+@app.command("forget")
+def forget_memory(
+    name: str = typer.Argument(..., help="삭제할 메모리 이름."),
+    scope: MemoryScope | None = typer.Option(
+        None, "--scope", "-s", help="스코프(미지정 시 글로벌·프로젝트 모두 탐색)."
+    ),
+) -> None:
+    """기억을 지운다."""
+    store = _store()
+    scopes = [scope] if scope is not None else [MemoryScope.GLOBAL, MemoryScope.PROJECT]
+    removed_any = False
+    for target in scopes:
+        if store.forget(name, target):
+            console.print(f"[green]✓[/green] 삭제: {name} ({target.value})")
+            removed_any = True
+    if not removed_any:
+        console.print(f"'{name}' 기억을 찾지 못했습니다.")
+        raise typer.Exit(code=1)

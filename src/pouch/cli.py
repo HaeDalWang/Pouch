@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 
 from pouch import __version__
+from pouch.memory.commands import app as memory_app
 
 app = typer.Typer(
     name="pouch",
@@ -18,6 +19,8 @@ app = typer.Typer(
     no_args_is_help=False,
 )
 console = Console()
+
+app.add_typer(memory_app, name="memory", help="🧠 메모리 — 쓸수록 쌓이는 개인 기억.")
 
 
 def _version_callback(value: bool) -> None:  # noqa: FBT001
@@ -45,7 +48,8 @@ def main(
 
 
 def _show_status() -> None:
-    """아직 비어있는 주머니의 현재 상태와 다음 단계를 안내한다."""
-    console.print("🦦 [bold]pouch[/bold] — 아직 비어있는 주머니")
-    console.print("   다음 단계: [cyan]Phase 1 — 메모리 레이어[/cyan]")
+    """현재 주머니 상태와 자주 쓰는 입구를 안내한다."""
+    console.print("🦦 [bold]pouch[/bold]")
+    console.print("   기억 보기: [cyan]pouch memory list[/cyan]")
+    console.print("   기억 담기: [cyan]pouch memory add[/cyan]")
     console.print("   도움말:   [dim]pouch --help[/dim]")
