@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 
 from pouch import __version__
+from pouch.hooks.commands import app as hook_app
 from pouch.memory.commands import app as memory_app
 
 app = typer.Typer(
@@ -21,6 +22,7 @@ app = typer.Typer(
 console = Console()
 
 app.add_typer(memory_app, name="memory", help="🧠 메모리 — 쓸수록 쌓이는 개인 기억.")
+app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리.")
 
 
 def _version_callback(value: bool) -> None:  # noqa: FBT001

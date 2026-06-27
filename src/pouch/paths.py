@@ -34,3 +34,13 @@ def project_memory_dir(start: Path | None = None) -> Path | None:
     """현재 프로젝트의 메모리 디렉토리. 프로젝트 루트를 못 찾으면 None."""
     root = find_project_root(start)
     return (root / ".pouch" / "memory") if root else None
+
+
+def claude_settings_path() -> Path:
+    """Claude Code 사용자 설정 파일 경로(`~/.claude/settings.json`).
+
+    `CLAUDE_CONFIG_DIR` 환경변수로 오버라이드 가능(테스트/대체 설치 위치).
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "settings.json"

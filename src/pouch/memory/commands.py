@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 from rich.console import Console
 
+from pouch.memory.context import render_context
 from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
 from pouch.memory.recall import recall as recall_fn
 from pouch.memory.store import MemoryStore
@@ -95,3 +96,11 @@ def forget_memory(
     if not removed_any:
         console.print(f"'{name}' 기억을 찾지 못했습니다.")
         raise typer.Exit(code=1)
+
+
+@app.command("context")
+def context() -> None:
+    """SessionStart hook용: 기억 인덱스를 평문으로 출력한다(에이전트 주입용)."""
+    text = render_context(_store().list())
+    if text:
+        typer.echo(text, nl=False)
