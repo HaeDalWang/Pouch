@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# venv / uv
+.venv/
+.python-version
+
+# 테스트 / 캐시
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# 에디터 / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code 로컬 권한 캐시 (개인용, 레포에 포함하지 않음)
+.claude/settings.local.json
+.claude/settings.json
