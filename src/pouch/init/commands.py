@@ -1,0 +1,98 @@
+"""`pouch init` — 환경을 감지하고 나에게 맞춰 주머니를 채우는 마법사.
+
+대화형(questionary)이 기본이지만, 플래그로 답을 주면 비대화형으로 동작한다
+(스크립트·자동화·시연). 자동화+투명성 원칙: 저장 전 요약 확인, hook 연결 제안.
+"""
+
+from __future__ import annotations
+
+import typer
+from rich.console import Console
+
+from pouch.hooks.settings import (
+    is_installed,
+    load_settings,
+    with_hook_installed,
+    write_settings,
+)
+from pouch.init.detect import Environment, detect_environment
+from pouch.init.profile import InitAnswers, build_memories
+from pouch import paths
+from pouch.memory.store import MemoryStore
+
+console = Console()
+
+_ROLES = ["개발자", "DevOps·인프라", "기획·PM", "디자인", "데이터·ML", "기타"]
+
+
+def ask_profile(env: Environment) -> InitAnswers:
+    """questionary로 역할·스택·작업 스타일을 묻는다(대화형 경로)."""
+    import questionary
+
+    role = questionary.select("역할이 어떻게 되세요?", choices=_ROLES).ask()
+    detected = {runtime.name for runtime in env.runtimes if runtime.version}
+    stack_choices = [
+        questionary.Choice(runtime.name, checked=runtime.name in detected)
+        for runtime in env.runtimes
+    ] or [questionary.Choice("기타")]
+    stacks = questionary.checkbox("주력 스택을 골라주세요", choices=stack_choices).ask()
+    work_style = questionary.text("작업 스타일을 한 줄로 (선택, 엔터로 건너뛰기):").ask()
+    return InitAnswers(
+        role=role or "기타",
+        stacks=tuple(stacks or ()),
+        work_style=(work_style or "").strip() or None,
+    )
+
+
+def init(
+    role: str | None = typer.Option(None, "--role", help="역할/직군(주면 비대화형)."),
+    stack: list[str] = typer.Option(None, "--stack", help="주력 스택(여러 번 지정 가능)."),
+    work_style: str | None = typer.Option(None, "--work-style", help="작업 스타일 한 줄."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 저장·연결."),
+) -> None:
+    """환경을 감지하고 프로파일을 기억으로 담는다."""
+    env = detect_environment()
+    _print_detected(env)
+
+    answers = (
+        InitAnswers(role=role, stacks=tuple(stack or ()), work_style=work_style)
+        if role is not None
+        else ask_profile(env)
+    )
+
+    memories = build_memories(answers, env)
+    console.print("\n[bold]담을 기억[/bold]")
+    for memory in memories:
+        console.print(f"  • [cyan]{memory.name}[/cyan] — {memory.description}")
+
+    if not yes and not typer.confirm("\n이대로 저장할까요?", default=True):
+        console.print("취소했습니다.")
+        raise typer.Exit()
+
+    store = MemoryStore()
+    for memory in memories:
+        store.save(memory)
+    console.print(f"[green]✓[/green] {len(memories)}개 기억을 담았습니다.")
+
+    _maybe_link_hook(yes=yes)
+
+
+def _print_detected(env: Environment) -> None:
+    console.print("🔍 [bold]감지된 환경[/bold]")
+    console.print(f"   OS: {env.os}   shell: {env.shell or '?'}")
+    runtimes = ", ".join(f"{r.name} {r.version or '?'}" for r in env.runtimes) or "없음"
+    console.print(f"   런타임: {runtimes}")
+
+
+def _maybe_link_hook(yes: bool) -> None:
+    """미연결 상태면 에이전트 연결(hook)을 제안/수행한다."""
+    path = paths.claude_settings_path()
+    settings = load_settings(path)
+    if is_installed(settings):
+        console.print("[green]✓[/green] 에이전트에 이미 연결돼 있습니다.")
+        return
+    if not yes and not typer.confirm("지금 에이전트에 연결할까요?", default=True):
+        console.print("   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다.")
+        return
+    write_settings(path, with_hook_installed(settings))
+    console.print(f"[green]✓[/green] 에이전트 연결 완료 → {path}")

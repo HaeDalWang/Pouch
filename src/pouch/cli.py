@@ -11,6 +11,7 @@ from rich.console import Console
 
 from pouch import __version__
 from pouch.hooks.commands import app as hook_app
+from pouch.init.commands import init as init_command
 from pouch.memory.commands import app as memory_app
 
 app = typer.Typer(
@@ -23,6 +24,7 @@ console = Console()
 
 app.add_typer(memory_app, name="memory", help="🧠 메모리 — 쓸수록 쌓이는 개인 기억.")
 app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리.")
+app.command(name="init", help="🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다.")(init_command)
 
 
 def _version_callback(value: bool) -> None:  # noqa: FBT001
