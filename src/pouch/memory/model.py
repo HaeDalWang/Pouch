@@ -20,6 +20,7 @@ class MemoryType(str, Enum):
     FEEDBACK = "feedback"
     PROJECT = "project"
     REFERENCE = "reference"
+    BOUNDARY = "boundary"  # 자율성/신뢰 경계 (허용·확인·금지). context 최상단 강조.
 
 
 class MemoryScope(str, Enum):

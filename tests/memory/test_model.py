@@ -58,3 +58,22 @@ def test_weight_defaults_to_zero() -> None:
 
     # Assert
     assert entry.weight == 0
+
+
+def test_boundary_type_roundtrips() -> None:
+    # Arrange
+    entry = MemoryEntry(
+        name="auto-commit",
+        description="커밋 자율 허용",
+        body="테스트 통과 시 커밋·푸시 자율. force push 금지.",
+        type=MemoryType.BOUNDARY,
+        scope=MemoryScope.PROJECT,
+        created=date(2026, 6, 29),
+    )
+
+    # Act
+    restored = MemoryEntry.from_markdown(entry.name, entry.to_markdown())
+
+    # Assert
+    assert restored == entry
+    assert "type: boundary" in entry.to_markdown()
