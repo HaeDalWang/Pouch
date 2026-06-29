@@ -21,6 +21,11 @@ def global_memory_dir() -> Path:
     return global_root() / "memory"
 
 
+def catalog_dir() -> Path:
+    """도구 카탈로그 디렉토리(`~/.pouch/catalog/`)."""
+    return global_root() / "catalog"
+
+
 def find_project_root(start: Path | None = None) -> Path | None:
     """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다."""
     start = (start or Path.cwd()).resolve()

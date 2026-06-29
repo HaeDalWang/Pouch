@@ -77,13 +77,16 @@
 ## Phase 3 — 도구 카탈로그
 
 > 목표: 무엇을 담을 수 있는지의 레지스트리.
+> **ownership 3값** — 판별 기준 "추적할 upstream이 있느냐":
+> `owned`(upstream 없음, body 소유·mutate) / `vendored`(upstream 추적, body 불변 sync, 개인화는 overlay) / `linked`(외부 실행, recipe+region).
 
-- [ ] skill/command/agent/rule/hook 메타데이터 스키마
-- [ ] 카탈로그 레지스트리 — 도구별 "누구에게 맞는지" 태그
-- [ ] 마법사가 카탈로그에서 선택하도록 연결
-- [ ] (선택) ECC 등 외부 소스 import 어댑터
+- [x] ① 카탈로그 스키마 + 레지스트리 — `ToolEntry`(ownership 3값) + list/search by tag (`catalog/`)
+- [ ] ② 임포터 — owned-import(복사+mutate) / vendored-import(upstream+sync+overlay, body 불변) / plugin 분해
+- [ ] ③ 설치 — owned·vendored 파일 배치, linked MCP 등록
+- [ ] ④ init 연결 — 역할·스택 태그로 추천 → 설치
 
-**산출물:** 마법사가 고를 수 있는 도구 풀.
+**AWS toolkit 분해:** Skills 40+ → vendored, rules → vendored, MCP Server → linked, Plugin(aws-core)은 번들이라 importer가 원자 단위로 쪼갬.
+**산출물:** 마법사가 고를 수 있는 도구 풀. boundary는 owned/vendored/linked 셋 다 적용.
 
 ---
 
