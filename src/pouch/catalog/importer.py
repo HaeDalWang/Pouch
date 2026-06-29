@@ -73,6 +73,43 @@ def import_vendored_skill(
     return entry
 
 
+def import_owned_skill(
+    path: Path,
+    store: CatalogStore,
+    *,
+    source: str,
+    tags: tuple[str, ...] = (),
+    force: bool = False,
+) -> ToolEntry:
+    """SKILL.md를 owned 항목으로 입양한다 — body 통째로 소유, upstream 끊음.
+
+    vendored의 거울상이다. 입양한 순간부터 본문은 내 것이라 직접 깎아 진화시킨다.
+    그래서 재import는 기본적으로 거부한다(force=False): 내가 깎은 body를 말없이
+    덮으면 안 되므로. 정말 upstream 본문으로 되돌리려면 force=True를 명시해야 한다.
+    """
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    meta = post.metadata
+    name = str(meta["name"])
+
+    if not force and store.get(name) is not None:
+        raise FileExistsError(
+            f"'{name}'은 이미 owned로 입양돼 있습니다. "
+            "직접 깎은 본문을 덮으려면 force=True를 명시하세요."
+        )
+
+    entry = ToolEntry.owned(
+        id=name,
+        kind=ToolKind.SKILL,
+        source=source,
+        title=str(meta.get("title") or name),
+        description=str(meta.get("description", "")),
+        body=post.content,
+        tags=tags,
+    )
+    store.save(entry)
+    return entry
+
+
 def apply_overlay(store: CatalogStore, entry_id: str, overlay: Overlay) -> ToolEntry:
     """vendored 항목에 개인화 overlay를 붙인다. 본체(upstream)는 건드리지 않는다."""
     entry = store.get(entry_id)

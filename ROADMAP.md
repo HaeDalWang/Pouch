@@ -81,7 +81,7 @@
 > `owned`(upstream 없음, body 소유·mutate) / `vendored`(upstream 추적, body 불변 sync, 개인화는 overlay) / `linked`(외부 실행, recipe+region).
 
 - [x] ① 카탈로그 스키마 + 레지스트리 — `ToolEntry`(ownership 3값) + list/search by tag (`catalog/`)
-- [~] ② 임포터 — **vendored-import v0 완료**(SKILL.md frontmatter만, body 불변, overlay 분리, 재import 멱등 — 실제 aws-iam 검증). 남음: owned-import, plugin 분해, sync 실행
+- [~] ② 임포터 — **vendored-import + owned-import v0 완료**. vendored(SKILL.md frontmatter만, body 불변, overlay 분리, 재import 멱등 — 실제 aws-iam 검증), owned(body 통째 소유, upstream 끊음, 재import는 force 없인 깎은 body 덮기 거부 — 실제 python-testing 검증). 남음: plugin 분해, sync 실행
 - [ ] ③ 설치 — owned·vendored 파일 배치, linked MCP 등록
 - [ ] ④ init 연결 — 역할·스택 태그로 추천 → 설치
 
