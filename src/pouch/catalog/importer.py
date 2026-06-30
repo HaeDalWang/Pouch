@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -14,6 +16,9 @@ import frontmatter
 
 from pouch.catalog.model import Overlay, ToolEntry, ToolKind
 from pouch.catalog.store import CatalogStore
+
+# AWS 리전 패턴 (us-east-1, eu-west-2, ap-southeast-1 …) — MCP 엔드포인트에서 추출.
+_AWS_REGION_RE = re.compile(r"\b([a-z]{2}-[a-z]+-\d+)\b")
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,90 @@ def import_owned_skill(
     )
     store.save(entry)
     return entry
+
+
+def _extract_region(recipe: dict) -> str | None:
+    """MCP recipe(command+args)에서 AWS 리전을 추출한다. 없으면 None.
+
+    엔드포인트 URL이나 인자 어딘가에 박힌 `us-east-1` 같은 토큰을 찾는다.
+    linked는 '어느 region에서 실행되나'를 알아야 하므로 여기서 한 번 파싱해 둔다.
+    """
+    haystack = " ".join(str(a) for a in recipe.get("args", []))
+    match = _AWS_REGION_RE.search(haystack)
+    return match.group(1) if match else None
+
+
+def import_mcp_servers(
+    mcp_json_path: Path,
+    store: CatalogStore,
+    *,
+    source: str,
+    tags: tuple[str, ...] = (),
+) -> list[ToolEntry]:
+    """.mcp.json의 각 서버를 linked 항목으로 등록한다 — 실행은 외부에 위임.
+
+    body가 없는 게 당연하다(linked). recipe(command+args)와 region만 들고,
+    실제 기동은 Claude/MCP 런타임이 한다.
+    """
+    data = json.loads(mcp_json_path.read_text(encoding="utf-8"))
+    servers = data.get("mcpServers", {})
+
+    entries: list[ToolEntry] = []
+    for name, spec in servers.items():
+        recipe = {k: v for k, v in spec.items() if k in ("command", "args")}
+        entry = ToolEntry.linked(
+            id=name,
+            kind=ToolKind.MCP,
+            source=source,
+            title=name,
+            description=spec.get("description", ""),
+            recipe=recipe,
+            region=_extract_region(recipe),
+            tags=tags,
+        )
+        store.save(entry)
+        entries.append(entry)
+    return entries
+
+
+def import_plugin(
+    plugin_dir: Path,
+    store: CatalogStore,
+    *,
+    synced_at: str,
+    source: str = "aws",
+    tags: tuple[str, ...] = ("vendor:aws",),
+) -> list[ToolEntry]:
+    """plugin을 원자 단위로 분해해 카탈로그에 들인다.
+
+    plugin은 ownership이 아니라 '번들'이다. 카탈로그엔 plugin 엔트리를 남기지
+    않고, 구성 요소만 1급 시민으로 쪼갠다:
+      - .mcp.json의 각 서버 → linked
+      - skills/*/SKILL.md → 각각 vendored (재import는 overlay 보존)
+
+    스킬은 import_vendored_skill에 위임해 overlay 보존을 공짜로 얻는다.
+    """
+    entries: list[ToolEntry] = []
+
+    mcp_json = plugin_dir / ".mcp.json"
+    if mcp_json.exists():
+        entries.extend(import_mcp_servers(mcp_json, store, source=source, tags=tags))
+
+    skills_dir = plugin_dir / "skills"
+    if skills_dir.is_dir():
+        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+            entries.append(
+                import_vendored_skill(
+                    skill_md,
+                    store,
+                    upstream=str(skill_md),
+                    synced_at=synced_at,
+                    source=source,
+                    tags=tags,
+                )
+            )
+
+    return entries
 
 
 def apply_overlay(store: CatalogStore, entry_id: str, overlay: Overlay) -> ToolEntry:
