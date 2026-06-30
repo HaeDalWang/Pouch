@@ -81,12 +81,13 @@
 > `owned`(upstream 없음, body 소유·mutate) / `vendored`(upstream 추적, body 불변 sync, 개인화는 overlay) / `linked`(외부 실행, recipe+region).
 
 - [x] ① 카탈로그 스키마 + 레지스트리 — `ToolEntry`(ownership 3값) + list/search by tag (`catalog/`)
-- [~] ② 임포터 — **vendored-import + owned-import v0 완료**. vendored(SKILL.md frontmatter만, body 불변, overlay 분리, 재import 멱등 — 실제 aws-iam 검증), owned(body 통째 소유, upstream 끊음, 재import는 force 없인 깎은 body 덮기 거부 — 실제 python-testing 검증). 남음: plugin 분해, sync 실행
-- [ ] ③ 설치 — owned·vendored 파일 배치, linked MCP 등록
-- [ ] ④ init 연결 — 역할·스택 태그로 추천 → 설치
+- [x] ② 임포터 — vendored·owned·plugin 분해·sync 전부 완료. vendored(frontmatter만, body 불변, overlay 분리, 재import 멱등), owned(body 통째 소유, upstream 끊음, force 없인 덮기 거부), plugin(번들→원자: .mcp.json→linked, skills→vendored, region 파싱, plugin 엔트리 안 남김), sync(vendored만 upstream 재방문, overlay 보존, owned·linked 제외). 실제 aws-core(14조각) 검증
+- [x] ③ 설치 — ownership이 메커니즘을 가름. owned(catalog body 쓰기) / vendored(upstream 재읽기) / linked(.mcp.json mcpServers 등록, 백업 동반). 순수 함수+IO 분리, 실제 aws-core 검증
+- [x] ④ init 연결 — 역할·스택 → 관심 토큰 추출 → 카탈로그 토큰 교집합 매칭(substring 아님, 노이즈 직군어 제외) → ownership별 설치. 실제 aws-core 검증
 
 **AWS toolkit 분해:** Skills 40+ → vendored, rules → vendored, MCP Server → linked, Plugin(aws-core)은 번들이라 importer가 원자 단위로 쪼갬.
-**산출물:** 마법사가 고를 수 있는 도구 풀. boundary는 owned/vendored/linked 셋 다 적용.
+**산출물:** `pouch init`이 역할로 도구를 골라 담는 한 벌. boundary는 owned/vendored/linked 셋 다 적용. ✅ **완료 (2026-06-30, 111 tests)**
+**Phase 4로 넘긴 것:** 추천 정밀도. v0는 "관심사로 그물을 던진다"까지 — `aws` 토큰이 `aws-sdk-swift-usage`까지 끌어온다. 안 쓰는 변종을 떨구는 건 진화 엔진의 일감("안 쓰는 건 떨어진다"). 지금 좁히면 speculative(YAGNI).
 
 ---
 
