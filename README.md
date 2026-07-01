@@ -50,26 +50,83 @@
 
 ## 설치
 
+**필요한 것:** Python 3.11+, [uv](https://docs.astral.sh/uv/), 그리고 에이전트 연결을 쓰려면 [Claude Code](https://claude.com/claude-code).
+
+가장 간단한 방법 — 저장소를 받아 도구로 상주시킨다(어느 디렉토리에서든 `pouch`가 된다):
+
+```bash
+git clone https://github.com/HaeDalWang/Pouch.git
+cd Pouch
+uv tool install .
 ```
-# 🚧 준비 중 — 설치 마법사 구현 후 채워집니다.
-# pouch init
+
+설치 확인:
+
+```bash
+pouch --version
+pouch --help
+```
+
+> 개발용으로 clone 위치에서 바로 돌리려면 `uv run pouch …` 를 쓴다(상주 설치 없이).
+> 나중에 걷어내려면 `uv tool uninstall pouch`.
+
+---
+
+## 빠른 시작 (end user)
+
+주머니를 채우고 → 에이전트에 연결하고 → 쓸수록 진화시킨다.
+
+```bash
+# 1) 🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다 (역할·스택을 물어본다)
+pouch init
+
+# 2) 🔌 에이전트(Claude Code)에 연결한다
+#    - 새 세션마다 당신의 기억을 안고 시작하고 (SessionStart)
+#    - 어떤 도구를 실제로 쓰는지 조용히 기억해둔다 (PostToolUse)
+#    설정은 pouch가 대신 바꾸고, 되돌릴 수 있게 백업(.bak)을 남긴다.
+pouch hook install
+
+# 3) 연결 상태 확인 (기억 주입 / 사용 로깅 두 축)
+pouch hook status
+```
+
+이후 Claude Code를 쓰다 보면 사용 기록이 `~/.pouch/usage.jsonl`에 쌓인다. 며칠 뒤:
+
+```bash
+# 🌊 안 쓰는 도구 정리를 제안받는다 (동의 없이는 아무것도 내리지 않는다)
+pouch evolve
+```
+
+`evolve`가 도구를 "내려도" 카탈로그와 당신의 개인화(경계·메모)는 남는다 — **떨어진다 ≠ 삭제된다.** 다시 쓰고 싶으면 재설치 한 번이면 되고, 쌓아둔 경계는 그대로 살아있다.
+
+되돌리기: `pouch hook uninstall` 로 연결을 원상복구한다.
+
+기억을 직접 다루고 싶으면:
+
+```bash
+pouch memory list             # 담긴 기억 보기
+pouch memory add -n <이름> -d <요약> -b <본문>
+pouch memory recall <검색어>  # 키워드로 회상
 ```
 
 ---
 
 ## 로드맵
 
-- [ ] 설치 마법사 — 사용자에 맞춰 도구/스킬 구성 (🪨 pouch)
-- [ ] 코어 하네스 — 에이전트에 도구를 쥐어주는 레이어
-- [ ] 스킬 선택/설치 메커니즘
-- [ ] 사용 패턴에 따른 점진적 진화
-- [ ] 주머니 공유 — 개인에서 팀으로 (🌊 raft)
+- [x] **메모리 레이어** — 쓸수록 쌓이는 개인 기억 + 에이전트 주입 (Phase 1)
+- [x] **설치 마법사** — 환경·역할을 묻고 나에게 맞춰 담는다 `pouch init` (🪨 Phase 2)
+- [x] **도구 카탈로그** — 무엇을 담을 수 있는지의 레지스트리 (owned/vendored/linked) (Phase 3)
+- [x] **진화 엔진** — 사용을 추적해 안 쓰는 도구 정리 제안 `pouch evolve` (🌊 Phase 4)
+- [ ] 태그 승격 — 실제 사용에서 진짜 프로필 학습 (Phase 4.5)
+- [ ] 주머니 공유 — 개인에서 팀으로 (🌊 raft, Phase 5)
+
+> 자세한 진행 상황은 [ROADMAP.md](ROADMAP.md) 참고.
 
 ---
 
 ## 상태
 
-🌱 **초기 개발 중.** 이건 살아있는 프로젝트다. 도구가 개발되면서 어떤 색은 퇴색되고 어떤 색은 더 진해질 것이다. 이 README도 pouch 속 돌처럼 — 쓰면서 닳고, 손에 맞게 다시 깎인다.
+🌊 **v0 동작 중.** `init → hook install → evolve` 전 경로가 돈다. 여전히 초기라, 이 README도 pouch 속 돌처럼 — 쓰면서 닳고, 손에 맞게 다시 깎인다.
 
 ---
 
