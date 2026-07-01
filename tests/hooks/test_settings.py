@@ -7,10 +7,14 @@ from pathlib import Path
 
 from pouch.hooks.settings import (
     POUCH_HOOK_COMMAND,
+    POUCH_USAGE_HOOK_COMMAND,
     is_installed,
+    is_usage_hook_installed,
     load_settings,
     with_hook_installed,
     with_hook_removed,
+    with_usage_hook_installed,
+    with_usage_hook_removed,
     write_settings,
 )
 
@@ -21,6 +25,10 @@ def _commands(settings: dict) -> list[str]:
         for group in settings.get("hooks", {}).get("SessionStart", [])
         for hook in group.get("hooks", [])
     ]
+
+
+def _post_groups(settings: dict) -> list[dict]:
+    return settings.get("hooks", {}).get("PostToolUse", [])
 
 
 def test_install_into_empty_settings() -> None:
@@ -77,3 +85,44 @@ def test_write_creates_backup_on_second_write(tmp_path: Path) -> None:
 
 def test_load_missing_returns_empty(tmp_path: Path) -> None:
     assert load_settings(tmp_path / "nope.json") == {}
+
+
+def test_usage_hook_install_and_detect() -> None:
+    installed = with_usage_hook_installed({})
+    assert is_usage_hook_installed(installed)
+    # PostToolUse 그룹에 matcher와 명령이 실린다
+    group = _post_groups(installed)[0]
+    assert group["hooks"][0]["command"] == POUCH_USAGE_HOOK_COMMAND
+
+
+def test_usage_hook_install_is_idempotent() -> None:
+    once = with_usage_hook_installed({})
+    twice = with_usage_hook_installed(once)
+    assert once == twice
+
+
+def test_usage_hook_does_not_mutate_input() -> None:
+    original: dict = {}
+    with_usage_hook_installed(original)
+    assert original == {}
+
+
+def test_usage_hook_coexists_with_session_start() -> None:
+    # 두 hook이 한 설정에 공존한다 (SessionStart + PostToolUse)
+    settings = with_usage_hook_installed(with_hook_installed({}))
+    assert is_installed(settings)
+    assert is_usage_hook_installed(settings)
+
+
+def test_usage_hook_remove_cleans_up() -> None:
+    installed = with_usage_hook_installed({})
+    removed = with_usage_hook_removed(installed)
+    assert not is_usage_hook_installed(removed)
+    assert "hooks" not in removed
+
+
+def test_usage_hook_remove_keeps_session_start() -> None:
+    settings = with_usage_hook_installed(with_hook_installed({}))
+    removed = with_usage_hook_removed(settings)
+    assert not is_usage_hook_installed(removed)
+    assert is_installed(removed)  # SessionStart는 남는다

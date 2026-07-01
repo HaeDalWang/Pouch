@@ -34,6 +34,14 @@ def usage_log_path() -> Path:
     return global_root() / "usage.jsonl"
 
 
+def state_path() -> Path:
+    """활성 표면 상태 사이드카(`~/.pouch/state.json`).
+
+    entry_id → installed_at·status. 카탈로그와 분리된 라이프사이클 기록.
+    """
+    return global_root() / "state.json"
+
+
 def find_project_root(start: Path | None = None) -> Path | None:
     """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다."""
     start = (start or Path.cwd()).resolve()
@@ -57,3 +65,19 @@ def claude_settings_path() -> Path:
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     base = Path(override).expanduser() if override else Path.home() / ".claude"
     return base / "settings.json"
+
+
+def claude_skills_dir() -> Path:
+    """Claude Code 스킬 설치 위치(`~/.claude/skills/`).
+
+    `CLAUDE_CONFIG_DIR` 환경변수로 오버라이드 가능(테스트/대체 설치 위치).
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "skills"
+
+
+def project_mcp_config_path(start: Path | None = None) -> Path:
+    """현재 프로젝트의 `.mcp.json` 경로. 프로젝트 루트를 못 찾으면 cwd 기준."""
+    root = find_project_root(start) or (start or Path.cwd())
+    return root / ".mcp.json"

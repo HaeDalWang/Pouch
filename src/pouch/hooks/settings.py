@@ -13,6 +13,10 @@ from pathlib import Path
 # SessionStart에 등록할 명령. 이 문자열로 설치 여부를 식별한다.
 POUCH_HOOK_COMMAND = "pouch memory context"
 
+# PostToolUse에 등록할 사용 로깅 명령 + 매처(Skill·MCP 호출만 추적).
+POUCH_USAGE_HOOK_COMMAND = "pouch evolve log"
+POUCH_USAGE_HOOK_MATCHER = "Skill|mcp__.*"
+
 
 def load_settings(path: Path) -> dict:
     """설정 파일을 읽는다. 없거나 비어있으면 빈 dict."""
@@ -22,43 +26,77 @@ def load_settings(path: Path) -> dict:
     return json.loads(raw) if raw else {}
 
 
-def is_installed(settings: dict) -> bool:
-    """pouch SessionStart hook이 이미 등록돼 있는지."""
-    for group in settings.get("hooks", {}).get("SessionStart", []):
+def _has_command(settings: dict, event: str, command: str) -> bool:
+    """특정 이벤트 그룹에 해당 명령이 등록돼 있는지."""
+    for group in settings.get("hooks", {}).get(event, []):
         for hook in group.get("hooks", []):
-            if hook.get("command") == POUCH_HOOK_COMMAND:
+            if hook.get("command") == command:
                 return True
     return False
 
 
-def with_hook_installed(settings: dict) -> dict:
-    """pouch hook이 추가된 새 설정을 반환한다(멱등). 기존 hook은 보존."""
-    if is_installed(settings):
+def _with_group_added(settings: dict, event: str, group: dict, command: str) -> dict:
+    """이벤트에 hook 그룹을 추가한 새 설정을 반환한다(멱등). 기존 hook 보존."""
+    if _has_command(settings, event, command):
         return settings
     updated = copy.deepcopy(settings)
     hooks = updated.setdefault("hooks", {})
-    session_start = hooks.setdefault("SessionStart", [])
-    session_start.append({"hooks": [{"type": "command", "command": POUCH_HOOK_COMMAND}]})
+    hooks.setdefault(event, []).append(group)
     return updated
+
+
+def _with_command_removed(settings: dict, event: str, command: str) -> dict:
+    """이벤트에서 해당 명령만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
+    if not _has_command(settings, event, command):
+        return settings
+    updated = copy.deepcopy(settings)
+    cleaned_groups = []
+    for group in updated.get("hooks", {}).get(event, []):
+        kept = [h for h in group.get("hooks", []) if h.get("command") != command]
+        if kept:
+            cleaned_groups.append({**group, "hooks": kept})
+    if cleaned_groups:
+        updated["hooks"][event] = cleaned_groups
+    else:
+        updated["hooks"].pop(event, None)
+        if not updated["hooks"]:
+            updated.pop("hooks", None)
+    return updated
+
+
+def is_installed(settings: dict) -> bool:
+    """pouch SessionStart hook이 이미 등록돼 있는지."""
+    return _has_command(settings, "SessionStart", POUCH_HOOK_COMMAND)
+
+
+def with_hook_installed(settings: dict) -> dict:
+    """pouch hook이 추가된 새 설정을 반환한다(멱등). 기존 hook은 보존."""
+    group = {"hooks": [{"type": "command", "command": POUCH_HOOK_COMMAND}]}
+    return _with_group_added(settings, "SessionStart", group, POUCH_HOOK_COMMAND)
 
 
 def with_hook_removed(settings: dict) -> dict:
     """pouch hook만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
-    if not is_installed(settings):
-        return settings
-    updated = copy.deepcopy(settings)
-    cleaned_groups = []
-    for group in updated.get("hooks", {}).get("SessionStart", []):
-        kept = [h for h in group.get("hooks", []) if h.get("command") != POUCH_HOOK_COMMAND]
-        if kept:
-            cleaned_groups.append({**group, "hooks": kept})
-    if cleaned_groups:
-        updated["hooks"]["SessionStart"] = cleaned_groups
-    else:
-        updated["hooks"].pop("SessionStart", None)
-        if not updated["hooks"]:
-            updated.pop("hooks", None)
-    return updated
+    return _with_command_removed(settings, "SessionStart", POUCH_HOOK_COMMAND)
+
+
+def is_usage_hook_installed(settings: dict) -> bool:
+    """pouch PostToolUse 사용 로깅 hook이 이미 등록돼 있는지."""
+    return _has_command(settings, "PostToolUse", POUCH_USAGE_HOOK_COMMAND)
+
+
+def with_usage_hook_installed(settings: dict) -> dict:
+    """사용 로깅 hook(PostToolUse)이 추가된 새 설정을 반환한다(멱등)."""
+    group = {
+        "matcher": POUCH_USAGE_HOOK_MATCHER,
+        "hooks": [{"type": "command", "command": POUCH_USAGE_HOOK_COMMAND}],
+    }
+    return _with_group_added(settings, "PostToolUse", group, POUCH_USAGE_HOOK_COMMAND)
+
+
+def with_usage_hook_removed(settings: dict) -> dict:
+    """사용 로깅 hook만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
+    return _with_command_removed(settings, "PostToolUse", POUCH_USAGE_HOOK_COMMAND)
 
 
 def write_settings(path: Path, settings: dict) -> Path | None:
