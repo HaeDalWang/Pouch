@@ -41,7 +41,8 @@ def test_project_memory_dir_under_root(tmp_path: Path) -> None:
     assert paths.project_memory_dir(tmp_path) == tmp_path / ".pouch" / "memory"
 
 
-def test_global_memory_dir_under_home() -> None:
-    # Act / Assert
+def test_global_memory_dir_under_home(monkeypatch) -> None:
+    # 오버라이드를 걷어내고 '기본값'(~/.pouch)을 검증한다.
+    monkeypatch.delenv("POUCH_HOME", raising=False)
     assert paths.global_memory_dir().name == "memory"
     assert paths.global_memory_dir().parent.name == ".pouch"

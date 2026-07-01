@@ -140,3 +140,34 @@ def test_install_entry_dispatches_by_ownership(
     # linked는 파일이 아니라 설정 경로를 돌려준다
     assert linked_result == mcp_config
     assert is_mcp_registered(json.loads(mcp_config.read_text(encoding="utf-8")), "aws-mcp")
+
+
+def test_install_entry_records_active_state(tmp_path: Path) -> None:
+    # 설치는 활성 표면에 올리는 지점 = state.json에 installed_at·active로 남는다.
+    # evolve가 볼 데이터를 여기서 심는다(안 남으면 evolve는 영원히 장님).
+    from pouch.evolution.state import active_entries
+
+    state = tmp_path / "state.json"
+    install_entry(
+        _owned(), skills_dir=tmp_path / "skills", mcp_config_path=tmp_path / ".mcp.json",
+        now="2026-07-01T00:00:00", state_path=state,
+    )
+
+    assert active_entries(state_path=state) == {"my-wf": "2026-07-01T00:00:00"}
+
+
+def test_install_entry_reattach_refreshes_state(tmp_path: Path) -> None:
+    # 재부착 = installed_at 갱신(never-used 시계 리셋). drop 후 재설치 경로.
+    from pouch.evolution.state import active_entries, mark_dropped
+
+    state = tmp_path / "state.json"
+    skills_dir = tmp_path / "skills"
+    mcp = tmp_path / ".mcp.json"
+    install_entry(_owned(), skills_dir=skills_dir, mcp_config_path=mcp,
+                  now="2026-06-01T00:00:00", state_path=state)
+    mark_dropped("my-wf", state_path=state)
+
+    install_entry(_owned(), skills_dir=skills_dir, mcp_config_path=mcp,
+                  now="2026-07-01T00:00:00", state_path=state)
+
+    assert active_entries(state_path=state) == {"my-wf": "2026-07-01T00:00:00"}

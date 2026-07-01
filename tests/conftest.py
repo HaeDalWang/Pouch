@@ -1,0 +1,18 @@
+"""테스트 전역 격리 — 실제 홈(`~/.pouch`, `~/.claude`)을 절대 건드리지 않는다.
+
+autouse로 POUCH_HOME·CLAUDE_CONFIG_DIR을 테스트별 tmp로 돌린다. 개별 테스트가
+monkeypatch로 다시 지정하면 그 값이 이긴다(autouse가 먼저, 테스트가 나중).
+install_entry가 state.json을 기록하게 되면서 이 격리가 필수가 됐다.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_home(tmp_path_factory, monkeypatch) -> None:
+    pouch_home = tmp_path_factory.mktemp("pouch_home")
+    claude_home = tmp_path_factory.mktemp("claude_home")
+    monkeypatch.setenv("POUCH_HOME", str(pouch_home))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))

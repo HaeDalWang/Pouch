@@ -91,16 +91,33 @@ def register_mcp(config_path: Path, entry: ToolEntry) -> Path | None:
 
 
 def install_entry(
-    entry: ToolEntry, *, skills_dir: Path, mcp_config_path: Path
+    entry: ToolEntry,
+    *,
+    skills_dir: Path,
+    mcp_config_path: Path,
+    now: str | None = None,
+    state_path: Path | None = None,
 ) -> Path:
     """ownership에 따라 설치하고, 결과 경로를 반환한다.
 
     skill(owned/vendored)이면 SKILL.md 경로, linked면 MCP 설정 경로를 돌려준다.
+    설치는 활성 표면에 올리는 유일한 관문이라, 여기서 state.json에 active로 기록한다
+    (evolve가 볼 데이터를 심는다). 재부착이면 installed_at을 갱신해 시계를 리셋한다.
+    시계는 이 경계에서만 읽는다(now 미지정 시).
     """
+    from datetime import datetime
+
+    from pouch.evolution.state import record_installed
+
     if entry.ownership is Ownership.LINKED:
         register_mcp(mcp_config_path, entry)
-        return mcp_config_path
-    return install_skill_file(entry, skills_dir=skills_dir)
+        result = mcp_config_path
+    else:
+        result = install_skill_file(entry, skills_dir=skills_dir)
+
+    stamp = now or datetime.now().isoformat(timespec="seconds")
+    record_installed(entry.id, now=stamp, state_path=state_path)
+    return result
 
 
 def _load_json(path: Path) -> dict:
