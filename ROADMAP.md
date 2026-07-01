@@ -108,12 +108,12 @@
 
 **구현 항목:**
 
-- [ ] 사용 로깅 hook — PostToolUse(Skill·mcp__ 매처) → `usage.jsonl`. **선결: 페이로드에 Skill 이름 실리는지 확인**
-- [ ] usage 집계 — entry_id별 last_used·count 파생 (사이드카 읽기)
-- [ ] drop 후보 산출 — 2단계 분류, 순수 함수
-- [ ] `pouch evolve` — 후보 제안 + 동의 → 표면에서 uninstall(카탈로그 보존), 재부착 지원
+- [x] 사용 로깅 hook — PostToolUse(`Skill|mcp__.*` 매처) → `usage.jsonl`. **선결 확정: `tool_input.skill`이 Skill 이름(라이브 검증)**
+- [x] usage 집계 — entry_id별 last_used·count 파생 (사이드카 읽기)
+- [x] drop 후보 산출 — 2단계 분류(never-used / stale), 순수 함수. immunity는 stale 임계에서 자동으로 나옴
+- [x] `pouch evolve` — 후보 제안 + 동의 → 표면에서 uninstall(카탈로그 보존), 재부착 지원
 
-**산출물:** 시간이 지날수록 더 정확히 맞아가는 주머니.
+**산출물:** 시간이 지날수록 더 정확히 맞아가는 주머니. ✅ **v0 완료 (2026-07-01, 163 tests)** — 6조각(사이드카 로그·추적 매핑·집계·후보·uninstall·evolve CLI) + 배선 2(설치→state 기록, hook에 사용 로깅 연결). 실물 CLI로 install→log→evolve 전 경로 검증.
 **Phase 4.5로 넘긴 것:** 태그 승격(자주 쓴 도구 태그를 추천 키로 승격 = 실제 사용에서 진짜 프로필 학습). "쓸수록 손에 맞게 닳아간다"의 가장 깊은 형태지만, 같은 usage.jsonl 위 derivation이라 로그가 깊어진 뒤 안전하게 얹는다.
 
 ---
