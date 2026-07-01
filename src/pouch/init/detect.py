@@ -71,13 +71,22 @@ def _run_version(command: str, *args: str) -> str | None:
 
 
 def detect_runtimes() -> tuple[Runtime, ...]:
-    """PATH에 존재하는 런타임만 감지한다."""
+    """실제로 쓸 수 있는 런타임만 감지한다.
+
+    PATH 존재(which)는 필요조건이지 충분조건이 아니다 — macOS의 `/usr/bin/java`
+    스텁처럼 깔리지 않았는데도 which를 통과하는 함정이 있다. 버전 파싱 성공을
+    "실제 사용 가능"의 증거로 삼아, 버전을 못 뽑은 런타임은 넣지 않는다.
+    빈 버전을 기억에 흘리면 나중에 stack 태그 매칭에서 유령 태그가 된다.
+    """
     found: list[Runtime] = []
     for name, probe in _RUNTIME_PROBES.items():
         command, *args = probe
         if shutil.which(command) is None:
             continue
-        found.append(Runtime(name=name, version=_run_version(command, *args)))
+        version = _run_version(command, *args)
+        if version is None:
+            continue
+        found.append(Runtime(name=name, version=version))
     return tuple(found)
 
 
