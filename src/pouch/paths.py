@@ -26,6 +26,14 @@ def catalog_dir() -> Path:
     return global_root() / "catalog"
 
 
+def usage_log_path() -> Path:
+    """사용 이벤트 사이드카 로그(`~/.pouch/usage.jsonl`).
+
+    카탈로그(레지스트리)와 분리된 append-only 라이프사이클 레이어.
+    """
+    return global_root() / "usage.jsonl"
+
+
 def find_project_root(start: Path | None = None) -> Path | None:
     """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다."""
     start = (start or Path.cwd()).resolve()

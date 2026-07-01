@@ -94,13 +94,27 @@
 ## Phase 4 — 진화 엔진 (🌊 raft 직전)
 
 > 목표: 닳고 붙고 떨어진다.
+> **핵심 프레임 — 떨어진다 ≠ 삭제된다.** 모든 "제거"는 활성 표면(skills_dir/`.mcp.json`)에서
+> 내리는 것이지 카탈로그에서 지우는 게 아니다. 엔트리+overlay는 남는다(vendored가 body 대신
+> overlay만 두는 것과 같은 정신). 재부착=`install_entry` 재실행. overlay는 죽을 자리에 애초에 없다.
 
-- [ ] 사용 패턴 추적 — hook으로 도구 사용 로깅
-- [ ] 강화/제거 로직 — 자주 쓰는 건 강화, 안 쓰는 건 정리 제안
-- [ ] 메모리 `weight` 기반 우선순위
-- [ ] 정기 회고 — `pouch evolve` 가 구성 변화를 제안
+**정책 5결정 (2026-07-01 락):**
+
+- **① 신호** — 최근성 주축 + 횟수 보조. PostToolUse hook이 `{entry_id, ts}` 적재. boundary 통과는 신호에서 제외(위험≠유용, 가드레일로 직교).
+- **② 제거 임계** — 제안만, 자동 제거 안 함. 2단계 후보(never-used+유예 / 썼지만 stale). 임계는 기본값 있는 config.
+- **③ 강화 v0** — immunity + 추천 랭크 가점, 런타임 재정렬 없음. 태그 승격(사용 기반 프로필 학습)은 Phase 4.5 defer — usage.jsonl 위 derivation이라 retrofit 빚 없음.
+- **④ 가역성** — 프레임으로 해결. drop=표면만, 카탈로그 보존. prod-gate 경계는 도구가 떨어져도 안 죽는다.
+- **상태 저장** — 사이드카 분리. `~/.pouch/usage.jsonl`(append-only) + 별도 상태 파일. 카탈로그는 깨끗한 레지스트리로.
+
+**구현 항목:**
+
+- [ ] 사용 로깅 hook — PostToolUse(Skill·mcp__ 매처) → `usage.jsonl`. **선결: 페이로드에 Skill 이름 실리는지 확인**
+- [ ] usage 집계 — entry_id별 last_used·count 파생 (사이드카 읽기)
+- [ ] drop 후보 산출 — 2단계 분류, 순수 함수
+- [ ] `pouch evolve` — 후보 제안 + 동의 → 표면에서 uninstall(카탈로그 보존), 재부착 지원
 
 **산출물:** 시간이 지날수록 더 정확히 맞아가는 주머니.
+**Phase 4.5로 넘긴 것:** 태그 승격(자주 쓴 도구 태그를 추천 키로 승격 = 실제 사용에서 진짜 프로필 학습). "쓸수록 손에 맞게 닳아간다"의 가장 깊은 형태지만, 같은 usage.jsonl 위 derivation이라 로그가 깊어진 뒤 안전하게 얹는다.
 
 ---
 
