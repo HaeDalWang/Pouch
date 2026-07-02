@@ -56,8 +56,12 @@ def main(
 
 
 def _show_status() -> None:
-    """현재 주머니 상태와 자주 쓰는 입구를 안내한다."""
-    console.print("🦦 [bold]pouch[/bold]")
-    console.print("   기억 보기: [cyan]pouch memory list[/cyan]")
-    console.print("   기억 담기: [cyan]pouch memory add[/cyan]")
-    console.print("   도움말:   [dim]pouch --help[/dim]")
+    """현재 주머니 상태를 한 화면으로 보여준다(시계는 이 경계에서만 읽는다)."""
+    from datetime import datetime
+
+    from pouch.status import gather_status, render_lines
+
+    now = datetime.now().isoformat(timespec="seconds")
+    for line in render_lines(gather_status(now=now)):
+        console.print(line)
+    console.print("\n   도움말: [dim]pouch --help[/dim]")
