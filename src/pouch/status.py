@@ -8,10 +8,9 @@ Phase 4.6 ②: 루프(수집→집계→진화)는 다 돌아가는데 보여주
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 
 from pouch.catalog.model import Ownership, ToolEntry
-from pouch.evolution.aggregate import aggregate_usage
+from pouch.evolution.aggregate import aggregate_usage, events_within
 from pouch.evolution.usage_log import UsageEvent
 
 _RECENT_WINDOW_DAYS = 7
@@ -35,14 +34,6 @@ class PouchStatus:
     hook_usage: bool
 
 
-def _recent_events(
-    events: list[UsageEvent], *, now: str, window_days: int
-) -> list[UsageEvent]:
-    """now 기준 window_days 안의 이벤트만 남긴다."""
-    cutoff = datetime.fromisoformat(now) - timedelta(days=window_days)
-    return [e for e in events if datetime.fromisoformat(e.ts) >= cutoff]
-
-
 def build_status(
     *,
     memory_count: int,
@@ -58,7 +49,7 @@ def build_status(
     for entry in entries:
         by_ownership[entry.ownership] += 1
 
-    recent = _recent_events(events, now=now, window_days=_RECENT_WINDOW_DAYS)
+    recent = events_within(events, now=now, window_days=_RECENT_WINDOW_DAYS)
     stats = aggregate_usage(recent)
     ranked = sorted(stats.items(), key=lambda item: (-item[1].count, item[0]))
     catalog_ids = {entry.id for entry in entries}

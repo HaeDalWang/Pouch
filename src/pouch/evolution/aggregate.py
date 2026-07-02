@@ -7,6 +7,7 @@ ISO8601 문자열은 사전식 비교가 곧 시간순이라 last_used = max(ts)
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from pouch.evolution.usage_log import UsageEvent
 
@@ -17,6 +18,14 @@ class UsageStat:
 
     count: int
     last_used: str
+
+
+def events_within(
+    events: list[UsageEvent], *, now: str, window_days: int
+) -> list[UsageEvent]:
+    """now 기준 window_days 안의 이벤트만 남긴다(순수 — now 주입)."""
+    cutoff = datetime.fromisoformat(now) - timedelta(days=window_days)
+    return [e for e in events if datetime.fromisoformat(e.ts) >= cutoff]
 
 
 def aggregate_usage(events: list[UsageEvent]) -> dict[str, UsageStat]:
