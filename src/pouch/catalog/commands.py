@@ -67,6 +67,59 @@ def _resolve_skill_path(path: Path) -> Path:
     return path / _SKILL_FILENAME if path.is_dir() else path
 
 
+_DISCOVER_MAX_DEPTH = 3  # marketplace 캐시가 <mkt>/<plugin>/<version>/ 3단
+
+
+def find_plugin_roots(path: Path, *, max_depth: int = _DISCOVER_MAX_DEPTH) -> list[Path]:
+    """중첩된 plugin 루트를 찾는다 — marketplace 캐시 구조 대응.
+
+    실측(2026-07-02): `~/.claude/plugins/cache`는 <marketplace>/<plugin>/<version>/
+    구조라 최상위를 가리키면 classify가 실패한다. 숨김 디렉토리(.claude 등 번들
+    사본)는 건너뛰고, 루트를 찾으면 그 안으로는 더 내려가지 않는다(중복 방지).
+    """
+
+    def _is_root(directory: Path) -> bool:
+        return (directory / _MCP_FILENAME).exists() or (directory / "skills").is_dir()
+
+    roots: list[Path] = []
+    frontier = [path]
+    for _ in range(max_depth):
+        next_frontier: list[Path] = []
+        for parent in frontier:
+            for child in sorted(parent.iterdir()):
+                if not child.is_dir() or child.name.startswith("."):
+                    continue
+                if _is_root(child):
+                    roots.append(child)
+                else:
+                    next_frontier.append(child)
+        frontier = next_frontier
+    return roots
+
+
+def _classify_or_discover(path: Path) -> tuple[str, Path]:
+    """직접 판별하고, 안 되면 한 겹 안쪽에서 plugin 루트를 찾아본다.
+
+    여러 개가 보이면 자동으로 다 들이지 않는다 — 어떤 주머니를 찰지는
+    사용자가 고른다(제안만 원칙).
+    """
+    try:
+        return classify_source(path), path
+    except ValueError:
+        if not path.is_dir():
+            raise
+        roots = find_plugin_roots(path)
+        if not roots:
+            raise
+        if len(roots) > 1:
+            listing = "\n".join(f"  • {root}" for root in roots)
+            raise ValueError(
+                f"plugin이 여러 개 보입니다. 하나를 골라 다시 실행하세요:\n{listing}"
+            ) from None
+        console.print(f"[dim]↳ 안쪽에서 plugin을 찾았습니다: {roots[0]}[/dim]")
+        return "plugin", roots[0]
+
+
 @app.command("import")
 def import_source(
     source_path: Path = typer.Argument(..., help="SKILL.md / .mcp.json / plugin 디렉토리."),
@@ -84,7 +137,7 @@ def import_source(
     store = CatalogStore()
     tags = tuple(tag)
     try:
-        kind = classify_source(path)
+        kind, path = _classify_or_discover(path)
         imported = _run_import(kind, path, store, own=own, force=force, source=source, tags=tags)
     except (ValueError, FileExistsError, KeyError) as exc:
         console.print(f"[red]✗[/red] {exc}")

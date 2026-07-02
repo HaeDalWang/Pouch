@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from pouch.catalog.commands import classify_source
+from pouch.catalog.commands import classify_source, find_plugin_roots
 from pouch.catalog.model import Overlay, Ownership
 from pouch.catalog.store import CatalogStore
 from pouch.cli import app
@@ -81,6 +81,63 @@ def test_classify_unknown_raises(tmp_path: Path) -> None:
     unknown.mkdir()
     with pytest.raises(ValueError):
         classify_source(unknown)
+
+
+# ── ①-b 중첩 plugin 탐색 (marketplace 캐시 대응) ─────────────────────
+#
+# 실측(2026-07-02): ~/.claude/plugins/cache는 <marketplace>/<plugin>/<version>/
+# 3단 구조라, end user가 최상위를 가리키면 classify가 실패했다.
+# import가 중첩 루트를 스스로 찾아야 한다.
+
+
+def _marketplace(tmp_path: Path, *plugins: str) -> Path:
+    """<mkt>/<plugin>/<version>/{.mcp.json} 모양의 캐시 구조를 만든다."""
+    mkt = tmp_path / "cache" / "some-marketplace"
+    for name in plugins:
+        root = mkt / name / "1.0.0"
+        root.mkdir(parents=True)
+        (root / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {f"{name}-mcp": {"command": "uvx", "args": ["x"]}}}),
+            encoding="utf-8",
+        )
+    return mkt
+
+
+def test_find_plugin_roots_discovers_nested_root(tmp_path: Path) -> None:
+    mkt = _marketplace(tmp_path, "aws-core")
+
+    roots = find_plugin_roots(mkt)
+
+    assert roots == [mkt / "aws-core" / "1.0.0"]
+
+
+def test_find_plugin_roots_skips_hidden_dirs(tmp_path: Path) -> None:
+    mkt = _marketplace(tmp_path, "aws-core")
+    # 번들 안의 숨김 사본(.claude/skills 등)은 루트로 세면 중복이 된다
+    hidden = mkt / "aws-core" / "1.0.0" / ".claude" / "skills"
+    hidden.mkdir(parents=True)
+
+    roots = find_plugin_roots(mkt)
+
+    assert roots == [mkt / "aws-core" / "1.0.0"]
+
+
+def test_import_marketplace_dir_discovers_single_plugin(tmp_path: Path) -> None:
+    mkt = _marketplace(tmp_path, "aws-core")
+
+    result = runner.invoke(app, ["catalog", "import", str(mkt)])
+
+    assert result.exit_code == 0
+    assert CatalogStore().get("aws-core-mcp") is not None
+
+
+def test_import_marketplace_dir_with_many_plugins_asks_to_pick(tmp_path: Path) -> None:
+    mkt = _marketplace(tmp_path, "aws-core", "other-plugin")
+
+    result = runner.invoke(app, ["catalog", "import", str(mkt)])
+
+    assert result.exit_code != 0
+    assert "aws-core" in result.output and "other-plugin" in result.output
 
 
 # ── ②③④ import ──────────────────────────────────────────────────────
