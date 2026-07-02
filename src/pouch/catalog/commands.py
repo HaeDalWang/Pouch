@@ -18,6 +18,7 @@ from rich.console import Console
 
 from pouch import paths
 from pouch.catalog.importer import (
+    PluginImportResult,
     import_mcp_servers,
     import_owned_skill,
     import_plugin,
@@ -138,13 +139,15 @@ def import_source(
     tags = tuple(tag)
     try:
         kind, path = _classify_or_discover(path)
-        imported = _run_import(kind, path, store, own=own, force=force, source=source, tags=tags)
-    except (ValueError, FileExistsError, KeyError) as exc:
+        result = _run_import(kind, path, store, own=own, force=force, source=source, tags=tags)
+    except (ValueError, FileExistsError) as exc:
         console.print(f"[red]✗[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(f"[green]✓[/green] {len(imported)}개 항목을 카탈로그에 담았습니다:")
-    for entry in imported:
+    for skip in result.skipped:
+        console.print(f"[yellow]![/yellow] 건너뜀: {skip.reason}")
+    console.print(f"[green]✓[/green] {len(result.entries)}개 항목을 카탈로그에 담았습니다:")
+    for entry in result.entries:
         console.print(f"  • [cyan]{entry.id}[/cyan] ({entry.ownership.value})")
     console.print("   설치: [cyan]pouch catalog install <id>[/cyan]")
 
@@ -158,21 +161,26 @@ def _run_import(
     force: bool,
     source: str,
     tags: tuple[str, ...],
-) -> list:
-    """판별된 종류에 맞는 importer로 위임한다."""
+) -> PluginImportResult:
+    """판별된 종류에 맞는 importer로 위임한다.
+
+    plugin은 깨진 조각을 건너뛰며 리포트로 돌아오고, 단일 대상(skill/mcp)은
+    건너뛸 나머지가 없으니 실패를 그대로 올린다(호출부가 사람 말로 보고).
+    """
     if kind == "plugin":
         return import_plugin(path, store, synced_at=_now(), source=source, tags=tags)
     if kind == "mcp":
-        return import_mcp_servers(path, store, source=source, tags=tags)
+        servers = import_mcp_servers(path, store, source=source, tags=tags)
+        return PluginImportResult(entries=tuple(servers))
     skill_path = _resolve_skill_path(path)
     if own:
-        return [import_owned_skill(skill_path, store, source=source, tags=tags, force=force)]
-    return [
-        import_vendored_skill(
+        entry = import_owned_skill(skill_path, store, source=source, tags=tags, force=force)
+    else:
+        entry = import_vendored_skill(
             skill_path, store, upstream=str(skill_path), synced_at=_now(),
             source=source, tags=tags,
         )
-    ]
+    return PluginImportResult(entries=(entry,))
 
 
 @app.command("list")

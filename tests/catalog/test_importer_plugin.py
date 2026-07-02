@@ -77,14 +77,35 @@ def store(tmp_path: Path) -> CatalogStore:
 
 def test_contract1_no_plugin_entry(plugin_dir: Path, store: CatalogStore) -> None:
     # Act
-    entries = import_plugin(plugin_dir, store, synced_at="2026-06-30")
+    result = import_plugin(plugin_dir, store, synced_at="2026-06-30")
 
     # Assert — plugin 자체는 엔트리로 남지 않는다. 원자(skill 2 + mcp 1)만.
-    ids = {e.id for e in entries}
+    ids = {e.id for e in result.entries}
     assert "aws-core" not in ids
     assert ids == {"aws-iam", "aws-cdk", "aws-mcp"}
     # 카탈로그에 plugin kind/ownership 같은 건 존재하지 않는다
     assert all(e.kind in {ToolKind.SKILL, ToolKind.MCP} for e in store.list())
+
+
+def test_broken_skill_is_skipped_loudly_not_fatally(
+    plugin_dir: Path, store: CatalogStore
+) -> None:
+    # 실측(ECC, 2026-07-02): 182개 중 1개가 name 없는 SKILL.md — 그 하나가
+    # 전체 import를 죽였다. 깨진 조각은 건너뛰되 이유와 함께 보고하고,
+    # 성한 조각은 담는다(java 감지와 같은 원칙: 추측한 식별자를 넣지 않는다).
+    broken = plugin_dir / "skills" / "broken-skill"
+    broken.mkdir(parents=True)
+    (broken / "SKILL.md").write_text(
+        "---\ndescription: name이 없다\n---\n본문", encoding="utf-8"
+    )
+
+    result = import_plugin(plugin_dir, store, synced_at="2026-06-30")
+
+    assert {e.id for e in result.entries} == {"aws-iam", "aws-cdk", "aws-mcp"}
+    assert len(result.skipped) == 1
+    assert "broken-skill" in result.skipped[0].path
+    assert "name" in result.skipped[0].reason
+    assert store.get("broken-skill") is None  # 추측 식별자로 담지 않는다
 
 
 def test_contract2_mcp_becomes_linked(plugin_dir: Path, store: CatalogStore) -> None:

@@ -190,6 +190,34 @@ def test_import_with_tags(skill_file: Path) -> None:
     assert entry is not None and set(entry.tags) == {"stack:aws", "iam"}
 
 
+def test_import_plugin_with_broken_skill_warns_and_continues(plugin_dir: Path) -> None:
+    # 깨진 스킬 하나가 나머지를 인질로 잡으면 안 된다 — 경고와 함께 계속.
+    broken = plugin_dir / "skills" / "broken-skill"
+    broken.mkdir(parents=True)
+    (broken / "SKILL.md").write_text("---\ndescription: d\n---\nB", encoding="utf-8")
+
+    result = runner.invoke(app, ["catalog", "import", str(plugin_dir)])
+
+    assert result.exit_code == 0  # 성한 조각은 담겼으니 성공
+    assert "broken-skill" in result.output  # 뭘 건너뛰었는지 보인다
+    store = CatalogStore()
+    assert store.get("aws-iam") is not None
+    assert store.get("broken-skill") is None
+
+
+def test_import_single_skill_missing_name_fails_clearly(tmp_path: Path) -> None:
+    # 단일 skill import는 건너뛸 나머지가 없다 — 대신 에러가 사람 말이어야 한다.
+    path = tmp_path / "no-name" / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("---\ndescription: d\n---\nB", encoding="utf-8")
+
+    result = runner.invoke(app, ["catalog", "import", str(path)])
+
+    assert result.exit_code != 0
+    assert "name" in result.output
+    assert "no-name" in result.output  # 어느 파일인지 알려준다 (✗ 'name' 금지)
+
+
 # ── ⑤ list ───────────────────────────────────────────────────────────
 
 

@@ -31,6 +31,34 @@ class SkillSource:
     upstream: str
 
 
+@dataclass(frozen=True)
+class SkippedSkill:
+    """import에서 건너뛴 조각 — 조용히 삼키지 않고 이유와 함께 보고한다."""
+
+    path: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class PluginImportResult:
+    """plugin 분해 결과: 담은 것 + 건너뛴 것."""
+
+    entries: tuple[ToolEntry, ...]
+    skipped: tuple[SkippedSkill, ...] = ()
+
+
+def _require_name(meta: dict, path: Path) -> str:
+    """frontmatter의 name을 요구한다. 없으면 어느 파일인지까지 말해주고 실패.
+
+    디렉토리명으로 추측하지 않는다 — 추측한 식별자가 카탈로그에 들어가면
+    usage 추적(tool_input.skill)과 어긋나 유령 엔트리가 된다(java 감지와 같은 원칙).
+    """
+    name = meta.get("name")
+    if not name:
+        raise ValueError(f"{path}: frontmatter에 name이 없습니다")
+    return str(name)
+
+
 def read_skill(path: Path, *, upstream: str) -> SkillSource:
     """SKILL.md의 frontmatter만 읽는다. 본문은 의도적으로 버린다(vendored).
 
@@ -38,7 +66,7 @@ def read_skill(path: Path, *, upstream: str) -> SkillSource:
     """
     post = frontmatter.loads(path.read_text(encoding="utf-8"))
     meta = post.metadata
-    name = str(meta["name"])
+    name = _require_name(meta, path)
     return SkillSource(
         id=name,
         title=str(meta.get("title") or name),
@@ -94,7 +122,7 @@ def import_owned_skill(
     """
     post = frontmatter.loads(path.read_text(encoding="utf-8"))
     meta = post.metadata
-    name = str(meta["name"])
+    name = _require_name(meta, path)
 
     if not force and store.get(name) is not None:
         raise FileExistsError(
@@ -166,7 +194,7 @@ def import_plugin(
     synced_at: str,
     source: str = "aws",
     tags: tuple[str, ...] = ("vendor:aws",),
-) -> list[ToolEntry]:
+) -> PluginImportResult:
     """plugin을 원자 단위로 분해해 카탈로그에 들인다.
 
     plugin은 ownership이 아니라 '번들'이다. 카탈로그엔 plugin 엔트리를 남기지
@@ -175,8 +203,11 @@ def import_plugin(
       - skills/*/SKILL.md → 각각 vendored (재import는 overlay 보존)
 
     스킬은 import_vendored_skill에 위임해 overlay 보존을 공짜로 얻는다.
+    깨진 스킬(name 없음, 파싱 실패)은 건너뛰되 이유와 함께 보고한다 —
+    실측(ECC): 182개 중 1개가 깨졌다고 나머지 181개를 인질로 잡으면 안 된다.
     """
     entries: list[ToolEntry] = []
+    skipped: list[SkippedSkill] = []
 
     mcp_json = plugin_dir / ".mcp.json"
     if mcp_json.exists():
@@ -185,18 +216,21 @@ def import_plugin(
     skills_dir = plugin_dir / "skills"
     if skills_dir.is_dir():
         for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
-            entries.append(
-                import_vendored_skill(
-                    skill_md,
-                    store,
-                    upstream=str(skill_md),
-                    synced_at=synced_at,
-                    source=source,
-                    tags=tags,
+            try:
+                entries.append(
+                    import_vendored_skill(
+                        skill_md,
+                        store,
+                        upstream=str(skill_md),
+                        synced_at=synced_at,
+                        source=source,
+                        tags=tags,
+                    )
                 )
-            )
+            except Exception as exc:  # noqa: BLE001 — 외부 번들은 신뢰 경계 밖
+                skipped.append(SkippedSkill(path=str(skill_md), reason=str(exc)))
 
-    return entries
+    return PluginImportResult(entries=tuple(entries), skipped=tuple(skipped))
 
 
 def apply_overlay(store: CatalogStore, entry_id: str, overlay: Overlay) -> ToolEntry:
