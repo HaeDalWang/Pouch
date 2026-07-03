@@ -155,3 +155,68 @@ def test_contract8_cli_shows_adopt_hint(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "plugin_ecc_exa" in result.output
     assert "catalog import" in result.output  # 편입은 안내만, 자동 없음
+
+
+# ── alias·observe (A안, 2026-07-03) ──────────────────────────────────
+
+
+def test_alias_maps_usage_to_plugin_surfaced_entry_as_observe() -> None:
+    # 실측: usage는 plugin_ecc_exa, 카탈로그는 exa. alias로 이어지면
+    # "주머니 밖"이 아니라 "플러그인이 관리 중 — 관측만"이다.
+    events = [_event("plugin_ecc_exa") for _ in range(3)]
+
+    candidates = attach_candidates(
+        events, catalog_ids={"exa"}, active_ids=set(), now=_NOW,
+        alias_map={"plugin_ecc_exa": "exa"}, plugin_surfaced={"exa"},
+    )
+
+    assert len(candidates) == 1
+    cand = candidates[0]
+    assert cand.entry_id == "exa" and cand.kind == "observe" and cand.count == 3
+
+
+def test_plugin_surfaced_is_never_reattach() -> None:
+    # 재부착 실행 = 프로젝트 .mcp.json 등록 — 플러그인으로 이미 살아있는
+    # 서버의 중복이 된다. 표면 통제권이 pouch에 없으면 제안하지 않는다.
+    candidates = attach_candidates(
+        [_event("exa")], catalog_ids={"exa"}, active_ids=set(), now=_NOW,
+        plugin_surfaced={"exa"},
+    )
+
+    assert all(c.kind != "reattach" for c in candidates)
+
+
+def test_alias_merges_counts_into_canonical_id() -> None:
+    # 같은 도구가 두 이름으로 찍혀도 하나로 합산된다.
+    events = [_event("plugin_ecc_exa"), _event("plugin_ecc_exa"), _event("exa")]
+
+    candidates = attach_candidates(
+        events, catalog_ids={"exa"}, active_ids=set(), now=_NOW,
+        alias_map={"plugin_ecc_exa": "exa"},
+    )
+
+    assert candidates[0].entry_id == "exa" and candidates[0].count == 3
+
+
+def test_cli_shows_plugin_managed_as_observation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.state import active_entries
+    from pouch.evolution.usage_log import append_event
+
+    CatalogStore().save(
+        ToolEntry.linked(
+            id="exa", kind=ToolKind.MCP, source="ecc", title="exa",
+            description="d", recipe={"command": "npx"},
+            aliases=("plugin_ecc_exa",), surface=SURFACE_PLUGIN,
+        )
+    )
+    for _ in range(3):
+        append_event(UsageEvent(entry_id="plugin_ecc_exa", ts=_fresh_ts()))
+
+    result = runner.invoke(app, ["evolve", "--yes"])
+
+    assert result.exit_code == 0
+    assert "exa" in result.output and "플러그인" in result.output
+    assert "exa" not in active_entries()  # 관측만 — 아무것도 설치하지 않는다

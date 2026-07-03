@@ -33,6 +33,12 @@ class Ownership(str, Enum):
     LINKED = "linked"
 
 
+# 표면 통제권 — ownership(몸의 소유)과 직교하는 축. 값이 없으면(None) pouch가
+# 표면을 관리한다(install/uninstall 가능). "plugin"이면 플러그인 시스템이
+# 표면을 관리하므로 pouch는 관측만 한다(중복 등록·거짓 drop 방지).
+SURFACE_PLUGIN = "plugin"
+
+
 @dataclass(frozen=True)
 class Overlay:
     """vendored 본체 위에 쌓는 개인화 레이어(본체와 분리 필수)."""
@@ -78,6 +84,8 @@ class ToolEntry:
     overlay: Overlay | None = None  # vendored
     recipe: dict | None = None  # linked
     region: str | None = None  # linked
+    aliases: tuple[str, ...] = ()  # 런타임 별칭(usage 추적이 보는 이름) — 예: plugin_<플러그인>_<서버>
+    surface: str | None = None  # 표면 통제권: None=pouch 관리, SURFACE_PLUGIN=플러그인 관리(관측만)
 
     @classmethod
     def owned(
@@ -141,6 +149,8 @@ class ToolEntry:
         recipe: dict,
         region: str | None = None,
         tags: tuple[str, ...] = (),
+        aliases: tuple[str, ...] = (),
+        surface: str | None = None,
     ) -> ToolEntry:
         return cls(
             id=id,
@@ -152,6 +162,8 @@ class ToolEntry:
             tags=tuple(tags),
             recipe=recipe,
             region=region,
+            aliases=tuple(aliases),
+            surface=surface,
         )
 
     def has_tag(self, tag: str) -> bool:
@@ -179,6 +191,10 @@ class ToolEntry:
             meta["recipe"] = self.recipe
         if self.region:
             meta["region"] = self.region
+        if self.aliases:
+            meta["aliases"] = list(self.aliases)
+        if self.surface:
+            meta["surface"] = self.surface
         return frontmatter.dumps(frontmatter.Post(self.body or "", **meta))
 
     @classmethod
@@ -202,4 +218,15 @@ class ToolEntry:
             overlay=overlay,
             recipe=meta.get("recipe"),
             region=meta.get("region"),
+            aliases=tuple(meta.get("aliases", ())),
+            surface=meta.get("surface"),
         )
+
+
+def alias_map(entries: list[ToolEntry] | tuple[ToolEntry, ...]) -> dict[str, str]:
+    """런타임 별칭 → 카탈로그 정식 id 매핑을 만든다(순수).
+
+    usage.jsonl의 entry_id(예: plugin_ecc_exa)를 카탈로그 엔트리(exa)로 잇는
+    다리다 — 이 매핑이 없으면 같은 도구가 "주머니 밖"으로 오인된다.
+    """
+    return {alias: entry.id for entry in entries for alias in entry.aliases}

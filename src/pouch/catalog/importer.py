@@ -14,7 +14,7 @@ from pathlib import Path
 
 import frontmatter
 
-from pouch.catalog.model import Overlay, ToolEntry, ToolKind
+from pouch.catalog.model import SURFACE_PLUGIN, Overlay, ToolEntry, ToolKind
 from pouch.catalog.store import CatalogStore
 
 # AWS 리전 패턴 (us-east-1, eu-west-2, ap-southeast-1 …) — MCP 엔드포인트에서 추출.
@@ -143,6 +143,21 @@ def import_owned_skill(
     return entry
 
 
+def _plugin_name(plugin_dir: Path) -> str | None:
+    """plugin의 정식 이름을 .claude-plugin/plugin.json에서 읽는다.
+
+    디렉토리명으로 추측하지 않는다(캐시 구조에선 버전 디렉토리가 루트라 틀린다).
+    못 읽으면 None — alias 없이 들이는 게 틀린 alias보다 낫다.
+    """
+    manifest = plugin_dir / ".claude-plugin" / "plugin.json"
+    if not manifest.exists():
+        return None
+    try:
+        return json.loads(manifest.read_text(encoding="utf-8")).get("name") or None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _extract_region(recipe: dict) -> str | None:
     """MCP recipe(command+args)에서 AWS 리전을 추출한다. 없으면 None.
 
@@ -160,11 +175,17 @@ def import_mcp_servers(
     *,
     source: str,
     tags: tuple[str, ...] = (),
+    plugin_name: str | None = None,
 ) -> list[ToolEntry]:
     """.mcp.json의 각 서버를 linked 항목으로 등록한다 — 실행은 외부에 위임.
 
     body가 없는 게 당연하다(linked). recipe(command+args)와 region만 들고,
     실제 기동은 Claude/MCP 런타임이 한다.
+
+    plugin에서 온 서버(plugin_name 지정)는 두 가지가 달라진다:
+      - alias `plugin_<플러그인>_<서버>` — Claude Code 런타임이 노출하는 이름.
+        이게 없으면 usage 추적과 카탈로그가 같은 도구를 다른 이름으로 부른다.
+      - surface=plugin — 표면을 플러그인이 관리하므로 pouch는 관측만 한다.
     """
     data = json.loads(mcp_json_path.read_text(encoding="utf-8"))
     servers = data.get("mcpServers", {})
@@ -181,6 +202,8 @@ def import_mcp_servers(
             recipe=recipe,
             region=_extract_region(recipe),
             tags=tags,
+            aliases=(f"plugin_{plugin_name}_{name}",) if plugin_name else (),
+            surface=SURFACE_PLUGIN if plugin_name else None,
         )
         store.save(entry)
         entries.append(entry)
@@ -211,7 +234,12 @@ def import_plugin(
 
     mcp_json = plugin_dir / ".mcp.json"
     if mcp_json.exists():
-        entries.extend(import_mcp_servers(mcp_json, store, source=source, tags=tags))
+        entries.extend(
+            import_mcp_servers(
+                mcp_json, store, source=source, tags=tags,
+                plugin_name=_plugin_name(plugin_dir),
+            )
+        )
 
     skills_dir = plugin_dir / "skills"
     if skills_dir.is_dir():

@@ -160,3 +160,31 @@ def test_contract4_reimport_preserves_skill_overlay(
 def test_skills_carry_vendor_tag(plugin_dir: Path, store: CatalogStore) -> None:
     import_plugin(plugin_dir, store, synced_at="2026-06-30")
     assert store.get("aws-cdk").has_tag("vendor:aws")
+
+
+def test_plugin_mcp_gets_runtime_alias_and_plugin_surface(
+    plugin_dir: Path, store: CatalogStore
+) -> None:
+    # Claude Code는 플러그인 MCP 서버를 plugin_<이름>_<서버>로 노출한다.
+    # 이름은 .claude-plugin/plugin.json에서 읽는다(디렉토리명 추측 금지).
+    from pouch.catalog.model import SURFACE_PLUGIN
+
+    import_plugin(plugin_dir, store, synced_at="2026-07-03")
+
+    mcp = store.get("aws-mcp")
+    assert mcp is not None
+    assert "plugin_aws-core_aws-mcp" in mcp.aliases
+    assert mcp.surface == SURFACE_PLUGIN  # 표면은 플러그인이 관리 — pouch는 관측만
+
+
+def test_direct_mcp_import_is_pouch_surfaced(tmp_path: Path, store: CatalogStore) -> None:
+    # .mcp.json을 직접 들이면 표면을 pouch가 관리한다 — alias도 필요 없다.
+    from pouch.catalog.importer import import_mcp_servers
+
+    path = tmp_path / ".mcp.json"
+    path.write_text(_MCP_JSON, encoding="utf-8")
+
+    entries = import_mcp_servers(path, store, source="me")
+
+    assert entries[0].aliases == ()
+    assert entries[0].surface is None

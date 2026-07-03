@@ -25,6 +25,7 @@ from pouch.catalog.importer import (
     import_vendored_skill,
 )
 from pouch.catalog.install import install_entry
+from pouch.catalog.model import SURFACE_PLUGIN
 from pouch.catalog.store import CatalogStore
 from pouch.catalog.sync import sync_all
 from pouch.evolution.state import active_entries
@@ -214,6 +215,12 @@ def install(
     entry = CatalogStore().get(entry_id)
     if entry is None:
         console.print(f"[red]✗[/red] 카탈로그에 '{entry_id}'가 없습니다. [cyan]pouch catalog list[/cyan]로 확인하세요.")
+        raise typer.Exit(code=1)
+    if entry.surface == SURFACE_PLUGIN:
+        console.print(
+            f"[red]✗[/red] '{entry_id}'는 플러그인이 표면을 관리합니다 — "
+            "pouch가 또 등록하면 중복이 됩니다. 플러그인 설정에서 켜고 끄세요."
+        )
         raise typer.Exit(code=1)
 
     try:

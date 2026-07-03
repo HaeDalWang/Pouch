@@ -98,3 +98,39 @@ def test_has_tag() -> None:
     )
     assert entry.has_tag("vendor:aws")
     assert not entry.has_tag("role:dev")
+
+
+# ── alias·surface (Phase 4.6 후속, 2026-07-03) ───────────────────────
+#
+# 실측: 같은 도구가 이름 둘을 가진다 — 카탈로그는 .mcp.json의 원래 이름(exa),
+# 사용 추적은 런타임 네임스페이스(plugin_<플러그인>_exa). alias가 둘을 잇는다.
+# surface는 "표면 통제권" 축: 플러그인이 표면을 관리하면 pouch는 관측만.
+
+
+def test_linked_roundtrip_with_aliases_and_surface() -> None:
+    from pouch.catalog.model import SURFACE_PLUGIN
+
+    entry = ToolEntry.linked(
+        id="exa", kind=ToolKind.MCP, source="ecc",
+        title="exa", description="d", recipe={"command": "npx"},
+        aliases=("plugin_everything-claude-code_exa",),
+        surface=SURFACE_PLUGIN,
+    )
+    assert ToolEntry.from_markdown(entry.to_markdown()) == entry
+
+
+def test_alias_map_maps_runtime_name_to_catalog_id() -> None:
+    from pouch.catalog.model import alias_map
+
+    exa = ToolEntry.linked(
+        id="exa", kind=ToolKind.MCP, source="ecc", title="exa",
+        description="d", recipe={}, aliases=("plugin_ecc_exa",),
+    )
+    plain = ToolEntry.linked(
+        id="plain", kind=ToolKind.MCP, source="me", title="p",
+        description="d", recipe={},
+    )
+
+    mapping = alias_map([exa, plain])
+
+    assert mapping == {"plugin_ecc_exa": "exa"}

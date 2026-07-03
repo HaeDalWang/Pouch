@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pouch.catalog.install import install_entry
+from pouch.catalog.model import SURFACE_PLUGIN, alias_map
 from pouch.catalog.store import CatalogStore
 from pouch.catalog.uninstall import uninstall_entry
 from pouch.evolution.aggregate import aggregate_usage
@@ -46,9 +47,14 @@ def plan_attach(
     """로그·상태·카탈로그를 읽어 당겨올 후보를 계산한다. 아무것도 안 붙인다(제안만)."""
     events = read_events(log_path=usage_path)
     active = active_entries(state_path=state_path)
-    catalog_ids = {entry.id for entry in store.list()}
+    entries = list(store.list())
     return attach_candidates(
-        events, catalog_ids=catalog_ids, active_ids=set(active), now=now
+        events,
+        catalog_ids={entry.id for entry in entries},
+        active_ids=set(active),
+        now=now,
+        alias_map=alias_map(entries),
+        plugin_surfaced={e.id for e in entries if e.surface == SURFACE_PLUGIN},
     )
 
 

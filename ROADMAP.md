@@ -142,6 +142,14 @@
 
 **①~③ 완료 (2026-07-02, 194 tests).** ④는 정책 설계 세션이 선행돼야 열린다.
 
+**후속(A안, 2026-07-03): alias + 표면 통제권.** end user 실측에서 같은 도구가 이름 둘을 가짐이 드러남 —
+카탈로그는 `.mcp.json`의 원래 이름(exa), usage 추적은 런타임 네임스페이스(`plugin_<플러그인>_exa`).
+
+- **alias 슬롯** — plugin import 시 런타임 별칭을 엔트리에 박고(이름은 `.claude-plugin/plugin.json`에서,
+  디렉토리명 추측 금지), 집계는 alias를 정식 id로 접어(canonicalize) 비교한다.
+- **surface 축** — ownership(몸의 소유)과 직교하는 "표면 통제권". 플러그인이 표면을 관리하는 엔트리는
+  evolve의 재부착/드롭 대상에서 빠지고 **관측만**(`플러그인이 관리 중`), `catalog install`도 거부(중복 등록 방지).
+
 **부채 상환 (동승):**
 
 - [x] environment vs stack 소스 오브 트루스 — **stack(사용자 의도)이 추천의 소스, environment(감지 사실)는

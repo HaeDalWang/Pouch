@@ -138,9 +138,10 @@ def _propose_attaches(
     skills_dir: Path,
     mcp_config_path: Path,
 ) -> None:
-    """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt는 안내만."""
+    """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt·observe는 안내만."""
     reattaches = [c for c in candidates if c.kind == "reattach"]
     adopts = [c for c in candidates if c.kind == "adopt"]
+    observes = [c for c in candidates if c.kind == "observe"]
 
     console.print("\n🧲 [bold]주머니로 당겨올 것[/bold]\n")
     for cand in reattaches:
@@ -151,6 +152,11 @@ def _propose_attaches(
         console.print(
             f"  • [cyan]{cand.entry_id}[/cyan] — 주머니 밖인데 최근 {cand.count}회 씀"
             f" → [cyan]pouch catalog import[/cyan]로 편입"
+        )
+    for cand in observes:
+        console.print(
+            f"  • [cyan]{cand.entry_id}[/cyan] — 플러그인이 관리 중, 최근 {cand.count}회 씀"
+            " [dim](관측만)[/dim]"
         )
 
     if not reattaches:

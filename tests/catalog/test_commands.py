@@ -290,3 +290,24 @@ def test_contract8_sync_refreshes_vendored_and_keeps_overlay(skill_file: Path) -
     assert entry is not None
     assert entry.description == "IAM 절차 v2"  # upstream 재방문 반영
     assert entry.overlay is not None and entry.overlay.notes == "prod-gate"  # 개인화 생존
+
+
+def test_install_refuses_plugin_surfaced_entry(tmp_path: Path) -> None:
+    # 표면을 플러그인이 관리하는 서버를 pouch가 또 등록하면 중복(거짓말)이다.
+    from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
+
+    CatalogStore().save(
+        ToolEntry.linked(
+            id="exa", kind=ToolKind.MCP, source="ecc", title="exa",
+            description="d", recipe={"command": "npx"}, surface=SURFACE_PLUGIN,
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        ["catalog", "install", "exa", "--skills-dir", str(tmp_path / "s"),
+         "--mcp-config", str(tmp_path / ".mcp.json")],
+    )
+
+    assert result.exit_code != 0
+    assert "플러그인" in result.output

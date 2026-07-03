@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pouch.catalog.model import Ownership, ToolEntry
-from pouch.evolution.aggregate import aggregate_usage, events_within
+from pouch.catalog.model import Ownership, ToolEntry, alias_map
+from pouch.evolution.aggregate import aggregate_usage, canonicalize_stats, events_within
 from pouch.evolution.usage_log import UsageEvent
 
 _RECENT_WINDOW_DAYS = 7
@@ -50,7 +50,8 @@ def build_status(
         by_ownership[entry.ownership] += 1
 
     recent = events_within(events, now=now, window_days=_RECENT_WINDOW_DAYS)
-    stats = aggregate_usage(recent)
+    # 런타임 별칭(plugin_<플러그인>_<서버>)을 카탈로그 정식 id로 접어 비교한다.
+    stats = canonicalize_stats(aggregate_usage(recent), alias_map(entries))
     ranked = sorted(stats.items(), key=lambda item: (-item[1].count, item[0]))
     catalog_ids = {entry.id for entry in entries}
 

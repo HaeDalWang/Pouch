@@ -124,3 +124,22 @@ def test_contract6_bare_pouch_shows_catalog_and_usage(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "aws-iam" in result.output  # 최근 사용이 보인다
     assert "1" in result.output
+
+
+def test_aliased_usage_is_inside_pouch_and_canonicalized() -> None:
+    # alias로 이어진 사용은 "주머니 밖"이 아니고, 정식 id로 합산돼 보인다.
+    from dataclasses import replace
+
+    exa = replace(_linked("exa"), aliases=("plugin_ecc_exa",))
+    events = [
+        _event("plugin_ecc_exa", "2026-07-01T09:00:00"),
+        _event("plugin_ecc_exa", "2026-07-01T10:00:00"),
+    ]
+
+    status = build_status(
+        memory_count=0, entries=[exa], active_ids=set(),
+        events=events, now=_NOW, hook_memory=False, hook_usage=False,
+    )
+
+    assert status.outside_pouch == ()
+    assert status.recent_top[0] == ("exa", 2)
