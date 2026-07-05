@@ -70,6 +70,14 @@ pouch --help
 > 개발용으로 clone 위치에서 바로 돌리려면 `uv run pouch …` 를 쓴다(상주 설치 없이).
 > 나중에 걷어내려면 `uv tool uninstall pouch`.
 
+새 버전으로 업그레이드(clone 디렉토리에서):
+
+```bash
+git pull && uv tool install . --force --reinstall
+```
+
+> `--force`만으로는 캐시된 wheel이 그대로 남아 버전이 안 올라갈 수 있다 — `--reinstall`까지 같이 줘야 확실하다.
+
 ---
 
 ## 빠른 시작 (end user)
