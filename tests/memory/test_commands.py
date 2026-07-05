@@ -114,3 +114,57 @@ def test_recall_warns_on_dead_reference_but_does_not_archive(workspace: Path) ->
     stored = MemoryStore().get("dash", MemoryScope.GLOBAL)
     assert stored is not None
     assert stored.state is MemoryState.INDEXED  # 자동 강등 안 됨(제안만 원칙)
+
+
+def test_add_pending_stages_low_friction_type_without_indexing(workspace: Path) -> None:
+    # project·reference는 저마찰 — --pending으로 확인 없이 스테이징된다.
+    from pouch.memory.model import MemoryScope, MemoryState
+    from pouch.memory.store import MemoryStore
+
+    result = runner.invoke(
+        app,
+        ["add", "-n", "sprint", "-d", "d", "-b", "b", "-t", "project", "-s", "global", "--pending"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    stored = MemoryStore().get("sprint", MemoryScope.GLOBAL)
+    assert stored is not None and stored.state is MemoryState.PENDING
+    index = (workspace / "global" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "sprint" not in index  # pending은 주입 안 됨
+
+
+def test_add_pending_rejects_high_friction_type(workspace: Path) -> None:
+    # feedback·boundary·user는 확인 필수 — pending 우회를 코드로 막는다.
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    result = runner.invoke(
+        app,
+        ["add", "-n", "hasty", "-d", "d", "-b", "b", "-t", "feedback", "-s", "global", "--pending"],
+    )
+
+    assert result.exit_code != 0
+    assert MemoryStore().get("hasty", MemoryScope.GLOBAL) is None
+
+
+def test_promote_moves_pending_to_indexed(workspace: Path) -> None:
+    from pouch.memory.model import MemoryScope, MemoryState
+    from pouch.memory.store import MemoryStore
+
+    runner.invoke(
+        app,
+        ["add", "-n", "sprint", "-d", "d", "-b", "b", "-t", "project", "-s", "global", "--pending"],
+    )
+
+    result = runner.invoke(app, ["promote", "sprint"])
+
+    assert result.exit_code == 0, result.stdout
+    stored = MemoryStore().get("sprint", MemoryScope.GLOBAL)
+    assert stored is not None and stored.state is MemoryState.INDEXED
+    index = (workspace / "global" / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "sprint" in index
+
+
+def test_promote_missing_exits_nonzero(workspace: Path) -> None:
+    result = runner.invoke(app, ["promote", "ghost"])
+    assert result.exit_code == 1

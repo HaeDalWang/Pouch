@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import typer
@@ -9,7 +10,8 @@ from rich.console import Console
 
 from pouch.memory.context import render_context
 from pouch.memory.liveness import check_reference_alive
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
+from pouch.memory.pending import is_low_friction
 from pouch.memory.recall import recall as recall_fn
 from pouch.memory.recall import touch_recalled
 from pouch.memory.store import MemoryStore
@@ -32,14 +34,30 @@ def add(
     body: str = typer.Option(..., "--body", "-b", help="기억할 내용 본문."),
     mem_type: MemoryType = typer.Option(MemoryType.PROJECT, "--type", "-t", help="기억의 성격."),
     scope: MemoryScope = typer.Option(MemoryScope.PROJECT, "--scope", "-s", help="적용 범위."),
+    pending: bool = typer.Option(
+        False, "--pending", help="확인 전 스테이징(저마찰 타입만: project·reference)."
+    ),
 ) -> None:
-    """새 기억을 담는다(같은 이름은 덮어씀)."""
+    """새 기억을 담는다(같은 이름은 덮어씀).
+
+    --pending은 project·reference에만 허용된다 — feedback·boundary·user는
+    오독한 지적이 매 세션 주입되는 standing rule로 굳는 위험이 있어 확인 없이
+    스테이징하는 우회를 코드로 막는다(들어오는 문의 타입별 마찰).
+    """
+    if pending and not is_low_friction(mem_type):
+        console.print(
+            f"[red]✗[/red] '{mem_type.value}'는 확인 없이 스테이징할 수 없습니다 — "
+            "--pending 없이 바로 담거나, 사용자 확인을 받으세요."
+        )
+        raise typer.Exit(code=1)
+
     entry = MemoryEntry(
         name=name,
         description=description,
         body=body,
         type=mem_type,
         scope=scope,
+        state=MemoryState.PENDING if pending else MemoryState.INDEXED,
     )
     try:
         path = _store().save(entry)
@@ -113,6 +131,26 @@ def forget_memory(
     if not removed_any:
         console.print(f"'{name}' 기억을 찾지 못했습니다.")
         raise typer.Exit(code=1)
+
+
+@app.command("promote")
+def promote(
+    name: str = typer.Argument(..., help="확인하고 인덱스에 올릴 pending 메모리 이름."),
+    scope: MemoryScope | None = typer.Option(
+        None, "--scope", "-s", help="스코프(미지정 시 글로벌·프로젝트 모두 탐색)."
+    ),
+) -> None:
+    """pending 스테이징을 확인하고 인덱스(INDEXED)로 올린다."""
+    store = _store()
+    scopes = [scope] if scope is not None else [MemoryScope.GLOBAL, MemoryScope.PROJECT]
+    for target in scopes:
+        entry = store.get(name, target)
+        if entry is not None:
+            store.save(replace(entry, state=MemoryState.INDEXED))
+            console.print(f"[green]✓[/green] 확인: [bold]{name}[/bold] → 인덱스에 올림")
+            return
+    console.print(f"'{name}' 기억을 찾지 못했습니다.")
+    raise typer.Exit(code=1)
 
 
 @app.command("context")
