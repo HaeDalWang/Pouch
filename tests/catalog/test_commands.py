@@ -292,6 +292,41 @@ def test_contract8_sync_refreshes_vendored_and_keeps_overlay(skill_file: Path) -
     assert entry.overlay is not None and entry.overlay.notes == "prod-gate"  # 개인화 생존
 
 
+def test_sync_reports_move_boundary_flag_and_loss(tmp_path: Path) -> None:
+    """이사는 버전으로 보고, boundary는 flag만, 증발은 유실+재연결 안내."""
+    import shutil
+
+    from pouch.catalog.importer import apply_overlay
+
+    def _versioned_skill(version: str, name: str) -> Path:
+        path = tmp_path / "cache" / "mkt" / "plug" / version / "skills" / name / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f"---\nname: {name}\ndescription: d\n---\n", encoding="utf-8"
+        )
+        return path
+
+    # 이사할 스킬(boundary 있음) + 증발할 스킬
+    mover = _versioned_skill("1.0.0", "aws-iam")
+    goner = tmp_path / "elsewhere" / "gone-skill" / "SKILL.md"
+    goner.parent.mkdir(parents=True)
+    goner.write_text("---\nname: gone-skill\ndescription: d\n---\n", encoding="utf-8")
+    runner.invoke(app, ["catalog", "import", str(mover)])
+    runner.invoke(app, ["catalog", "import", str(goner)])
+    apply_overlay(CatalogStore(), "aws-iam", Overlay(boundaries=("prod-gate",)))
+
+    _versioned_skill("1.1.0", "aws-iam")
+    shutil.rmtree(tmp_path / "cache" / "mkt" / "plug" / "1.0.0")
+    shutil.rmtree(goner.parent)
+
+    result = runner.invoke(app, ["catalog", "sync"])
+
+    assert result.exit_code == 0  # flag는 막지 않는다
+    assert "1.0.0 → 1.1.0" in result.output  # 이사는 버전으로 보고
+    assert "prod-gate" in result.output and "확인 요망" in result.output
+    assert "gone-skill" in result.output and "남아있어요" in result.output
+
+
 def test_install_refuses_plugin_surfaced_entry(tmp_path: Path) -> None:
     # 표면을 플러그인이 관리하는 서버를 pouch가 또 등록하면 중복(거짓말)이다.
     from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind

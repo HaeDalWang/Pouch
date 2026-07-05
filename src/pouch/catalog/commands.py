@@ -27,7 +27,7 @@ from pouch.catalog.importer import (
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN
 from pouch.catalog.store import CatalogStore
-from pouch.catalog.sync import sync_all
+from pouch.catalog.sync import SyncReport, moved_component, sync_all
 from pouch.evolution.state import active_entries
 
 app = typer.Typer(
@@ -238,14 +238,35 @@ def install(
 
 @app.command("sync")
 def sync() -> None:
-    """vendored 항목의 upstream을 재방문해 갱신한다(개인화 overlay는 보존)."""
-    try:
-        synced = sync_all(CatalogStore(), synced_at=_now())
-    except FileNotFoundError as exc:
-        console.print(f"[red]✗[/red] {exc}")
-        raise typer.Exit(code=1) from exc
+    """vendored 항목의 upstream을 재방문해 갱신한다(개인화 overlay는 보존).
 
-    if not synced:
+    upstream이 버전 이동으로 죽었으면 body는 자동으로 이사시키고,
+    boundary가 걸린 이사는 확인 요망을 flag만 한다(막지 않음).
+    """
+    report = sync_all(CatalogStore(), synced_at=_now())
+    if report.is_empty:
         console.print("📦 sync할 vendored 항목이 없습니다.")
         return
-    console.print(f"[green]✓[/green] {len(synced)}개 항목을 upstream과 맞췄습니다.")
+    _render_sync_report(report)
+
+
+def _render_sync_report(report: SyncReport) -> None:
+    """이사·유실·boundary flag를 사람 말로 보고한다."""
+    if report.synced:
+        console.print(f"[green]✓[/green] {len(report.synced)}개 항목을 upstream과 맞췄습니다.")
+    for moved in report.rehomed:
+        old_ver, new_ver = moved_component(moved.old_upstream, moved.entry.upstream or "")
+        console.print(
+            f"[green]↪[/green] [cyan]{moved.entry.id}[/cyan] — {old_ver} → {new_ver} 이사"
+        )
+        if moved.needs_boundary_check:
+            boundaries = ", ".join(moved.entry.overlay.boundaries)
+            console.print(
+                f"   [yellow]⚑[/yellow] boundary({boundaries}) — 새 버전에서 유효성 확인 요망"
+            )
+    for lost in report.missing:
+        console.print(
+            f"[yellow]![/yellow] [cyan]{lost.entry_id}[/cyan] — upstream이 증발했습니다"
+            "(본체 유실). 카탈로그·개인화는 남아있어요."
+            " 재연결: [cyan]pouch catalog import <새 경로>[/cyan]"
+        )

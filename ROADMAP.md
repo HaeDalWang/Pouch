@@ -155,6 +155,18 @@
 - [x] environment vs stack 소스 오브 트루스 — **stack(사용자 의도)이 추천의 소스, environment(감지 사실)는
   참고 컨텍스트.** 코드는 이미 이렇게 동작(recommend는 role·stacks만 읽음) — 규칙을 명문화해 고정 (2026-07-02).
 
+**후속(2026-07-05, BACKLOG 필수 1 승격): upstream 증발 대비 — "body는 자동 이사, boundary는 flag만".**
+vendored upstream이 버전 고정 경로(`<mkt>/<plugin>/<version>/…`)라 플러그인 업데이트 한 번에 194개가 동시에
+죽는 시한폭탄이었다. 층을 갈라 해결:
+
+- **body 자동 이사(rehome)** — 죽은 경로를 형제 버전 중 최신으로 재해석(rc < 정식), sync가 자동 re-link하고
+  "1.0.0 → 1.1.0 이사"로 보고. sync의 계약 자체가 "upstream 따라 fresh 유지"라 자동이 맞다.
+- **하이재킹 가드** — 재해석 결과가 같은 스킬인지 frontmatter name으로 검증. 스킬만 삭제된 경우 형제 스킬로
+  body가 조용히 바뀌는 최악의 오염을 유실 보고로 대체.
+- **boundary는 flag만** — 이사한 항목에 boundary가 있으면 "새 버전에서 유효성 확인 요망" 한 줄(막지 않음).
+- **완전 증발** — 엔트리·overlay 보존 + 유실 보고 + 재연결 안내. sync_all은 항목별 격리(인질 패턴 해제,
+  import 때와 같은 정신). 222 tests.
+
 ---
 
 ## Phase 5 — raft (개인 → 팀)
