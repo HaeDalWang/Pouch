@@ -31,6 +31,10 @@ from pouch.evolution.orchestrate import (
     plan_evolution,
 )
 from pouch.evolution.tracker import record_usage
+from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
+from pouch.memory.hygiene import HygieneCandidate
+from pouch.memory.model import MemoryEntry
+from pouch.memory.store import MemoryStore
 
 app = typer.Typer(
     help="🌊 evolve — 쓸수록 손에 맞게. 안 쓰는 건 정리 제안.",
@@ -82,9 +86,12 @@ def evolve(
     target_skills = skills_dir or paths.claude_skills_dir()
     target_mcp = mcp_config or paths.project_mcp_config_path()
 
+    memory_store = MemoryStore()
     drops = plan_evolution(now=now, config=EvolveConfig())
     attaches = plan_attach(now=now, store=store)
-    if not drops and not attaches:
+    pending = plan_memory_pending(memory_store)
+    hygiene = plan_memory_hygiene(memory_store, now=datetime.now().date())
+    if not drops and not attaches and not pending and not hygiene:
         console.print("🌊 오르내릴 것이 없습니다. 주머니가 손에 맞게 유지되고 있어요.")
         return
 
@@ -98,6 +105,10 @@ def evolve(
             attaches, yes=yes, store=store,
             skills_dir=target_skills, mcp_config_path=target_mcp,
         )
+    if pending:
+        _propose_memory_pending(pending, yes=yes, store=memory_store)
+    if hygiene:
+        _propose_memory_hygiene(hygiene, yes=yes, store=memory_store)
 
 
 def _propose_drops(
@@ -177,3 +188,42 @@ def _propose_attaches(
             console.print(f"  [red]✗[/red] {cand.entry_id}: {exc}")
     if restored:
         console.print(f"\n[green]✓[/green] {len(restored)}개 다시 올렸습니다: {', '.join(restored)}")
+
+
+def _propose_memory_pending(
+    entries: list[MemoryEntry], *, yes: bool, store: MemoryStore
+) -> None:
+    """들어오는 문 — 저마찰로 스테이징된 기억을 확인하고 인덱스에 올린다."""
+    console.print("\n🆕 [bold]확인할 기억[/bold] (저마찰로 스테이징됨)\n")
+    for entry in entries:
+        console.print(f"  • [cyan]{entry.name}[/cyan] ({entry.type.value}) — {entry.description}")
+
+    if not yes and not typer.confirm("\n확인하고 인덱스에 올릴까요?", default=False):
+        console.print("그대로 두었습니다. pending으로 남아있어요.")
+        return
+
+    for entry in entries:
+        store.promote(entry)
+    console.print(f"\n[green]✓[/green] {len(entries)}개 확인했습니다: {', '.join(e.name for e in entries)}")
+
+
+def _propose_memory_hygiene(
+    candidates: list[HygieneCandidate], *, yes: bool, store: MemoryStore
+) -> None:
+    """나가는 문 — 낡거나 죽은 기억을 인덱스에서 강등 제안한다(파일은 남음)."""
+    console.print("\n🧹 [bold]정리할 기억[/bold] (인덱스에서 내려도 파일은 남습니다)\n")
+    for cand in candidates:
+        console.print(f"  • [cyan]{cand.name}[/cyan] ({cand.type.value}) — {cand.detail}")
+
+    if not yes and not typer.confirm("\n인덱스에서 내릴까요?", default=False):
+        console.print("그대로 두었습니다. 다시 쓰고 싶으면 recall로 찾을 수 있어요.")
+        return
+
+    demoted: list[str] = []
+    for cand in candidates:
+        entry = store.get(cand.name, cand.scope)
+        if entry is not None:
+            store.demote(entry)
+            demoted.append(cand.name)
+    console.print(f"\n[green]✓[/green] {len(demoted)}개 내렸습니다: {', '.join(demoted)}")
+    console.print("   다시 필요하면 [cyan]pouch memory recall[/cyan]로 찾을 수 있어요(파일은 그대로).")

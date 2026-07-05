@@ -96,3 +96,43 @@ def test_contract4_evolve_yes_drops_candidate(tmp_path: Path, monkeypatch) -> No
     # ★ 카탈로그 엔트리 + overlay 생존
     survived = store.get("aws-swift")
     assert survived is not None and survived.overlay.boundaries == ("prod-gate",)
+
+
+def test_contract5_evolve_shows_pending_and_promotes_on_yes(tmp_path: Path, monkeypatch) -> None:
+    # 기억의 들어오는 문 — pending 스테이징을 evolve가 같은 화면에 보여주고 확인시킨다.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    runner.invoke(
+        app,
+        ["memory", "add", "-n", "sprint", "-d", "d", "-b", "b",
+         "-t", "project", "-s", "global", "--pending"],
+    )
+
+    result = runner.invoke(app, ["evolve", "--yes"])
+
+    assert result.exit_code == 0
+    assert "sprint" in result.output
+    stored = MemoryStore().get("sprint", MemoryScope.GLOBAL)
+    assert stored is not None and stored.state.value == "indexed"
+
+
+def test_contract6_evolve_shows_hygiene_and_demotes_on_yes(tmp_path: Path, monkeypatch) -> None:
+    # 기억의 나가는 문 — 죽은 reference를 evolve가 강등 제안하고 확인 시 내린다.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    runner.invoke(
+        app,
+        ["memory", "add", "-n", "dead-dash", "-d", "d", "-b", "/no/such/path.md",
+         "-t", "reference", "-s", "global"],
+    )
+
+    result = runner.invoke(app, ["evolve", "--yes"])
+
+    assert result.exit_code == 0
+    assert "dead-dash" in result.output
+    stored = MemoryStore().get("dead-dash", MemoryScope.GLOBAL)
+    assert stored is not None and stored.state.value == "archived"

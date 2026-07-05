@@ -7,11 +7,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 from pouch import paths
 from pouch.memory.index import INDEX_FILENAME, write_index
-from pouch.memory.model import MemoryEntry, MemoryScope
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState
 
 
 class MemoryStore:
@@ -57,6 +58,21 @@ class MemoryStore:
         if path is None or not path.exists():
             return None
         return MemoryEntry.from_markdown(name, path.read_text(encoding="utf-8"))
+
+    def promote(self, entry: MemoryEntry) -> MemoryEntry:
+        """pending을 확인하고 인덱스(INDEXED)로 올린다. save가 재인덱싱까지 보장."""
+        updated = replace(entry, state=MemoryState.INDEXED)
+        self.save(updated)
+        return updated
+
+    def demote(self, entry: MemoryEntry) -> MemoryEntry:
+        """인덱스에서 강등(ARCHIVED)한다 — 파일은 남고 recall로만 소환된다.
+
+        "떨어진다 ≠ 삭제된다"의 기억판: forget과 달리 파일을 지우지 않는다.
+        """
+        updated = replace(entry, state=MemoryState.ARCHIVED)
+        self.save(updated)
+        return updated
 
     def forget(self, name: str, scope: MemoryScope) -> bool:
         """메모리를 삭제한다. 실제로 지웠으면 True, 없었으면 False."""

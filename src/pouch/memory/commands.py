@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date
 
 import typer
@@ -146,7 +145,7 @@ def promote(
     for target in scopes:
         entry = store.get(name, target)
         if entry is not None:
-            store.save(replace(entry, state=MemoryState.INDEXED))
+            store.promote(entry)
             console.print(f"[green]✓[/green] 확인: [bold]{name}[/bold] → 인덱스에 올림")
             return
     console.print(f"'{name}' 기억을 찾지 못했습니다.")

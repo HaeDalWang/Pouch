@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
 from pouch.memory.store import MemoryStore
 
 
@@ -98,3 +98,37 @@ def test_save_is_idempotent_overwrites_same_name(store: MemoryStore) -> None:
     # Assert
     assert store.get("dup", MemoryScope.GLOBAL) == updated
     assert len(list(store.list())) == 1
+
+
+def test_promote_sets_indexed_and_updates_index(store: MemoryStore, tmp_path: Path) -> None:
+    # Arrange — pending은 재인덱싱 시 인덱스에서 제외돼야 한다
+    pending = MemoryEntry(
+        name="staged", description="d", body="b",
+        type=MemoryType.PROJECT, scope=MemoryScope.GLOBAL,
+        created=date(2026, 6, 27), state=MemoryState.PENDING,
+    )
+    store.save(pending)
+
+    # Act
+    promoted = store.promote(pending)
+
+    # Assert
+    assert promoted.state is MemoryState.INDEXED
+    assert store.get("staged", MemoryScope.GLOBAL).state is MemoryState.INDEXED
+    index = (tmp_path / "global" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "staged" in index
+
+
+def test_demote_sets_archived_and_removes_from_index(store: MemoryStore, tmp_path: Path) -> None:
+    # Arrange
+    entry = _entry("aging")
+    store.save(entry)
+
+    # Act
+    demoted = store.demote(entry)
+
+    # Assert — 파일은 남고(archived), 인덱스에선 빠진다("떨어진다 ≠ 삭제된다"의 기억판)
+    assert demoted.state is MemoryState.ARCHIVED
+    assert store.get("aging", MemoryScope.GLOBAL).state is MemoryState.ARCHIVED
+    index = (tmp_path / "global" / "MEMORY.md").read_text(encoding="utf-8")
+    assert "aging" not in index
