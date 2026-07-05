@@ -80,3 +80,37 @@ def test_forget_removes_memory(workspace: Path) -> None:
 def test_forget_missing_exits_nonzero(workspace: Path) -> None:
     result = runner.invoke(app, ["forget", "ghost"])
     assert result.exit_code == 1
+
+
+def test_recall_updates_last_recalled(workspace: Path) -> None:
+    # recall 이벤트가 last_recalled를 갱신한다(구조 슬롯의 v0 로직).
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    runner.invoke(app, ["add", "-n", "x", "-d", "파이썬 메모", "-b", "uv 사용", "-s", "global"])
+
+    runner.invoke(app, ["recall", "파이썬"])
+
+    stored = MemoryStore().get("x", MemoryScope.GLOBAL)
+    assert stored is not None
+    assert stored.last_recalled is not None
+
+
+def test_recall_warns_on_dead_reference_but_does_not_archive(workspace: Path) -> None:
+    # reference 생존성 체크는 recall에 올라타되, 제안만 — 자동 강등하지 않는다.
+    from pouch.memory.model import MemoryScope, MemoryState
+    from pouch.memory.store import MemoryStore
+
+    runner.invoke(
+        app,
+        ["add", "-n", "dash", "-d", "죽은 대시보드", "-b", "/no/such/path.md",
+         "-t", "reference", "-s", "global"],
+    )
+
+    result = runner.invoke(app, ["recall", "dash"])
+
+    assert "dash" in result.stdout
+    assert "사라진" in result.stdout or "죽" in result.stdout  # 인라인 경고
+    stored = MemoryStore().get("dash", MemoryScope.GLOBAL)
+    assert stored is not None
+    assert stored.state is MemoryState.INDEXED  # 자동 강등 안 됨(제안만 원칙)

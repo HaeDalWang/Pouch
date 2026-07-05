@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
-from pouch.memory.recall import recall
+from pouch.memory.recall import recall, touch_recalled
 
 
 def _entry(name: str, body: str, weight: int = 0) -> MemoryEntry:
@@ -62,3 +62,33 @@ def test_weight_breaks_into_score() -> None:
 def test_respects_limit() -> None:
     entries = [_entry(f"n{i}", "uv") for i in range(5)]
     assert len(recall(entries, "uv", limit=2)) == 2
+
+
+def test_touch_recalled_sets_last_recalled_to_now() -> None:
+    # Arrange
+    entry = _entry("a", "본문")
+
+    # Act
+    touched = touch_recalled([entry], now=date(2026, 7, 5))
+
+    # Assert
+    assert touched[0].last_recalled == date(2026, 7, 5)
+
+
+def test_touch_recalled_does_not_mutate_original() -> None:
+    # 불변 원칙 — 새 인스턴스를 반환하고 원본은 그대로
+    entry = _entry("a", "본문")
+
+    touch_recalled([entry], now=date(2026, 7, 5))
+
+    assert entry.last_recalled is None
+
+
+def test_touch_recalled_preserves_other_fields() -> None:
+    entry = _entry("a", "본문", weight=2)
+
+    touched = touch_recalled([entry], now=date(2026, 7, 5))[0]
+
+    assert touched.name == entry.name
+    assert touched.weight == entry.weight
+    assert touched.body == entry.body

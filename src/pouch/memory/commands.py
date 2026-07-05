@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import typer
 from rich.console import Console
 
 from pouch.memory.context import render_context
+from pouch.memory.liveness import check_reference_alive
 from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
 from pouch.memory.recall import recall as recall_fn
+from pouch.memory.recall import touch_recalled
 from pouch.memory.store import MemoryStore
 
 app = typer.Typer(
@@ -69,13 +73,26 @@ def recall_memories(
     query: str = typer.Argument(..., help="검색어(키워드)."),
     limit: int = typer.Option(5, "--limit", "-l", help="최대 결과 수."),
 ) -> None:
-    """기억을 키워드로 회상한다."""
-    hits = recall_fn(_store().list(), query, limit=limit)
+    """기억을 키워드로 회상한다.
+
+    recall 이벤트가 last_recalled를 갱신하고(구조 슬롯 v0 로직), reference
+    타입이면 그 자리에서 생존성을 확인한다. 죽었으면 인라인 경고만 한다 —
+    강등은 evolve의 위생 제안을 통해서만(제안만 원칙, 자동 없음).
+    """
+    store = _store()
+    hits = recall_fn(store.list(), query, limit=limit)
     if not hits:
         console.print(f"'{query}' 에 맞는 기억이 없습니다.")
         return
-    for entry in hits:
+
+    for entry, touched in zip(hits, touch_recalled(hits, now=date.today())):
+        store.save(touched)
         console.print(f"• [cyan]{entry.name}[/cyan] ({entry.scope.value}) — {entry.description}")
+        if entry.type is MemoryType.REFERENCE and not check_reference_alive(entry):
+            console.print(
+                f"   [yellow]⚑[/yellow] 가리키는 자원이 사라진 것 같습니다 — "
+                "[cyan]pouch evolve[/cyan]로 확인하세요"
+            )
 
 
 @app.command("forget")

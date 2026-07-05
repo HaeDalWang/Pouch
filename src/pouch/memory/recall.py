@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
+from datetime import date
 
 from pouch.memory.model import MemoryEntry
 
@@ -29,3 +31,11 @@ def recall(entries: Iterable[MemoryEntry], query: str, limit: int = 5) -> list[M
 
     scored.sort(key=lambda pair: (-pair[0], pair[1].name))
     return [entry for _, entry in scored[:limit]]
+
+
+def touch_recalled(entries: list[MemoryEntry], *, now: date) -> list[MemoryEntry]:
+    """recall된 항목들의 last_recalled를 now로 갱신한 새 목록을 반환한다(순수, 불변).
+
+    구조 슬롯(last_recalled)의 v0 로직 — 실제 저장(store.save)은 호출부(CLI 경계)의 몫.
+    """
+    return [replace(entry, last_recalled=now) for entry in entries]
