@@ -30,6 +30,20 @@ class MemoryScope(str, Enum):
     PROJECT = "project"
 
 
+class MemoryState(str, Enum):
+    """기억의 생명 계층 — "drop ≠ 삭제"의 기억판.
+
+    삭제(Deleted)는 파일 부재라 저장 상태가 아니다. 저장되는 건 세 계층 중
+    주입 여부가 갈리는 셋: INDEXED만 MEMORY.md에 실려 매 세션 주입되고,
+    PENDING(저마찰 포착·미확인)·ARCHIVED(위생으로 강등)는 파일로 남아
+    recall로만 소환된다. 하위호환 기본값은 INDEXED(옛 메모리는 전부 활성).
+    """
+
+    PENDING = "pending"  # 스테이징 — 확인 전, 주입 안 함(들어오는 문)
+    INDEXED = "indexed"  # 활성 — MEMORY.md에 실려 주입됨
+    ARCHIVED = "archived"  # 강등 — 인덱스에서 내렸으나 파일·recall 생존(나가는 문)
+
+
 @dataclass(frozen=True)
 class MemoryEntry:
     """단일 메모리 항목(불변)."""
@@ -41,25 +55,35 @@ class MemoryEntry:
     scope: MemoryScope
     weight: int = 0
     created: date = field(default_factory=date.today)
+    state: MemoryState = MemoryState.INDEXED
+    last_recalled: date | None = None  # recall 이벤트가 갱신(구조 슬롯; 빈도-면역 로직은 defer)
 
     def to_markdown(self) -> str:
-        """frontmatter 마크다운 문자열로 직렬화한다."""
-        post = frontmatter.Post(
-            self.body,
-            name=self.name,
-            description=self.description,
-            type=self.type.value,
-            scope=self.scope.value,
-            weight=self.weight,
-            created=self.created.isoformat(),
-        )
-        return frontmatter.dumps(post)
+        """frontmatter 마크다운 문자열로 직렬화한다.
+
+        state=INDEXED·last_recalled=None은 기본값이라 생략한다 — 기존 메모리
+        파일에 잡음을 안 남기고, 없으면 로드 시 기본값으로 복원된다(하위호환).
+        """
+        meta: dict = {
+            "name": self.name,
+            "description": self.description,
+            "type": self.type.value,
+            "scope": self.scope.value,
+            "weight": self.weight,
+            "created": self.created.isoformat(),
+        }
+        if self.state is not MemoryState.INDEXED:
+            meta["state"] = self.state.value
+        if self.last_recalled is not None:
+            meta["last_recalled"] = self.last_recalled.isoformat()
+        return frontmatter.dumps(frontmatter.Post(self.body, **meta))
 
     @classmethod
     def from_markdown(cls, name: str, text: str) -> MemoryEntry:
         """frontmatter 마크다운에서 역직렬화한다. `name`은 파일명을 권위로 삼는다."""
         post = frontmatter.loads(text)
         meta = post.metadata
+        last_recalled = meta.get("last_recalled")
         return cls(
             name=name,
             description=str(meta.get("description", "")),
@@ -68,6 +92,8 @@ class MemoryEntry:
             scope=MemoryScope(meta["scope"]),
             weight=int(meta.get("weight", 0)),
             created=_coerce_date(meta.get("created")),
+            state=MemoryState(meta.get("state", MemoryState.INDEXED.value)),
+            last_recalled=_coerce_date(last_recalled) if last_recalled is not None else None,
         )
 
 

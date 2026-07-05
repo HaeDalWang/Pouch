@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
 
 
 def test_roundtrip_preserves_all_fields() -> None:
@@ -58,6 +58,61 @@ def test_weight_defaults_to_zero() -> None:
 
     # Assert
     assert entry.weight == 0
+
+
+def test_state_and_last_recalled_roundtrip() -> None:
+    # Arrange — 기본값이 아닌 값이라야 직렬화가 검증된다
+    entry = MemoryEntry(
+        name="dashboard",
+        description="관측 대시보드 링크",
+        body="https://example.test/grafana",
+        type=MemoryType.REFERENCE,
+        scope=MemoryScope.GLOBAL,
+        state=MemoryState.ARCHIVED,
+        last_recalled=date(2026, 7, 5),
+    )
+
+    # Act
+    restored = MemoryEntry.from_markdown(entry.name, entry.to_markdown())
+
+    # Assert
+    assert restored == entry
+    assert restored.state is MemoryState.ARCHIVED
+    assert restored.last_recalled == date(2026, 7, 5)
+
+
+def test_state_defaults_to_indexed_and_last_recalled_none() -> None:
+    # Arrange — state·last_recalled 필드가 없는 옛 형식(하위호환)
+    old_format = (
+        "---\n"
+        "name: legacy\n"
+        "description: 옛 메모리\n"
+        "type: user\n"
+        "scope: global\n"
+        "weight: 0\n"
+        "created: 2026-06-01\n"
+        "---\n\n본문\n"
+    )
+
+    # Act
+    entry = MemoryEntry.from_markdown("legacy", old_format)
+
+    # Assert — 기존 메모리는 전부 indexed로, last_recalled는 비어서 로드된다
+    assert entry.state is MemoryState.INDEXED
+    assert entry.last_recalled is None
+
+
+def test_indexed_state_omitted_from_markdown() -> None:
+    # 기본(indexed)·last_recalled 없음이면 프론트매터에 잡음을 안 남긴다
+    entry = MemoryEntry(
+        name="n", description="d", body="b",
+        type=MemoryType.PROJECT, scope=MemoryScope.GLOBAL,
+    )
+
+    text = entry.to_markdown()
+
+    assert "state:" not in text
+    assert "last_recalled:" not in text
 
 
 def test_boundary_type_roundtrips() -> None:

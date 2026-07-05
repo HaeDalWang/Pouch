@@ -9,14 +9,20 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from pouch.memory.model import MemoryEntry
+from pouch.memory.model import MemoryEntry, MemoryState
 
 INDEX_FILENAME = "MEMORY.md"
 
 
 def render_index(entries: Iterable[MemoryEntry]) -> str:
-    """메모리 목록을 인덱스 마크다운 문자열로 렌더링한다."""
-    ordered = sorted(entries, key=lambda entry: entry.name)
+    """메모리 목록을 인덱스 마크다운 문자열로 렌더링한다.
+
+    인덱스 = 매 세션 주입되는 표면이므로 INDEXED 계층만 싣는다. PENDING(미확인)·
+    ARCHIVED(강등)는 파일로 남아 recall로 소환될 뿐 주입되지 않는다("규칙은 코드로" —
+    필터를 여기 두어 누구도 잊지 못하게 한다).
+    """
+    injected = [e for e in entries if e.state is MemoryState.INDEXED]
+    ordered = sorted(injected, key=lambda entry: entry.name)
     lines = ["# pouch memory", ""]
     if not ordered:
         lines.append("_아직 비어있습니다._")
