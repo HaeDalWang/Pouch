@@ -24,9 +24,11 @@ from pouch.catalog.importer import (
     import_plugin,
     import_vendored_skill,
 )
+from pouch.catalog.boundary import recommended_boundary_memories
 from pouch.catalog.install import install_entry
-from pouch.catalog.model import SURFACE_PLUGIN
+from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry
 from pouch.catalog.store import CatalogStore
+from pouch.memory.store import MemoryStore
 from pouch.catalog.sync import SyncReport, moved_component, sync_all
 from pouch.evolution.state import active_entries
 
@@ -234,6 +236,41 @@ def install(
         raise typer.Exit(code=1) from exc
 
     console.print(f"[green]✓[/green] [cyan]{entry_id}[/cyan]를 표면에 올렸습니다 → {result}")
+    _promote_boundaries(entry)
+
+
+def _promote_boundaries(entry: ToolEntry) -> None:
+    """엔트리가 딸고 온 권장 boundary를 boundary 메모리로 승격한다(설치 후).
+
+    standing rule을 세우는 일이라 심은 것을 투명하게 보고한다. 재부착 안전:
+    같은 이름이 이미 있으면 사용자가 손봤을 수 있어 덮지 않고 건너뛴다. project
+    스코프인데 프로젝트 루트가 없으면 그 하나만 건너뛰고 경고(설치는 이미 성공).
+    """
+    from datetime import date
+
+    mems = recommended_boundary_memories(entry, now=date.today())
+    if not mems:
+        return
+
+    store = MemoryStore()
+    for mem in mems:
+        if store.get(mem.name, mem.scope) is not None:
+            console.print(
+                f"  [dim]· 경계 '{mem.name}'는 이미 있어 건드리지 않았습니다.[/dim]"
+            )
+            continue
+        try:
+            store.save(mem)
+        except ValueError:
+            console.print(
+                f"  [yellow]⚑[/yellow] 경계 '{mem.name}'는 project 범위인데 "
+                "프로젝트 루트가 없어 건너뛰었습니다."
+            )
+            continue
+        console.print(
+            f"  [green]+[/green] 권장 경계 심음: [bold]{mem.name}[/bold] "
+            f"[{mem.direction.value if mem.direction else '?'}] — {mem.description}"
+        )
 
 
 @app.command("sync")

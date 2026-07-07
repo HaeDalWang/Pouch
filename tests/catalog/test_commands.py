@@ -270,6 +270,102 @@ def test_contract7_install_unknown_id_fails_loudly(tmp_path: Path) -> None:
     assert "ghost" in result.output
 
 
+def test_install_promotes_recommended_boundary_with_vendored_source(
+    skill_file: Path, tmp_path: Path
+) -> None:
+    # 설치 시 엔트리가 딸고 온 권장 boundary가 진짜 boundary 메모리로 태어나며
+    # source=vendored:<id> 도장을 단다 — P1의 심장(drop gate가 이걸 읽는다).
+    from dataclasses import replace
+
+    from pouch.catalog.model import RecommendedBoundary
+    from pouch.memory.model import Direction, MemoryScope, MemoryType
+
+    runner.invoke(app, ["catalog", "import", str(skill_file)])
+    store = CatalogStore()
+    entry = store.get("aws-iam")
+    store.save(
+        replace(
+            entry,
+            recommended_boundaries=(
+                RecommendedBoundary(
+                    name="iam-least-priv",
+                    description="IAM은 최소권한",
+                    body="와일드카드 권한 부여는 승인받아라.",
+                    direction=Direction.ASK,
+                    scope=MemoryScope.GLOBAL,
+                ),
+            ),
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        ["catalog", "install", "aws-iam", "--skills-dir", str(tmp_path / "skills"),
+         "--mcp-config", str(tmp_path / ".mcp.json")],
+    )
+
+    assert result.exit_code == 0, result.output
+    from pouch.memory.store import MemoryStore
+
+    mem = MemoryStore().get("iam-least-priv", MemoryScope.GLOBAL)
+    assert mem is not None
+    assert mem.type is MemoryType.BOUNDARY
+    assert mem.direction is Direction.ASK
+    assert mem.source == "vendored:aws-iam"
+
+
+def test_install_does_not_overwrite_existing_boundary(
+    skill_file: Path, tmp_path: Path
+) -> None:
+    # 재설치(재부착)가 사용자가 손본 boundary를 뭉개면 안 된다 — 없을 때만 심는다.
+    from dataclasses import replace
+
+    from pouch.catalog.model import RecommendedBoundary
+    from pouch.memory.model import (
+        Direction,
+        MemoryEntry,
+        MemoryScope,
+        MemoryType,
+    )
+    from pouch.memory.store import MemoryStore
+
+    # 사용자가 같은 이름의 boundary를 이미 손봐뒀다
+    mstore = MemoryStore()
+    mstore.save(
+        MemoryEntry(
+            name="iam-least-priv", description="내가 손본 버전",
+            body="사용자 편집본", type=MemoryType.BOUNDARY,
+            scope=MemoryScope.GLOBAL, direction=Direction.DENY, source="user",
+        )
+    )
+
+    runner.invoke(app, ["catalog", "import", str(skill_file)])
+    store = CatalogStore()
+    store.save(
+        replace(
+            store.get("aws-iam"),
+            recommended_boundaries=(
+                RecommendedBoundary(
+                    name="iam-least-priv", description="도구 권장본", body="도구 버전",
+                    direction=Direction.ASK, scope=MemoryScope.GLOBAL,
+                ),
+            ),
+        )
+    )
+
+    runner.invoke(
+        app,
+        ["catalog", "install", "aws-iam", "--skills-dir", str(tmp_path / "skills"),
+         "--mcp-config", str(tmp_path / ".mcp.json")],
+    )
+
+    # 사용자 편집본이 이긴다(출처·방향·본문 그대로)
+    mem = mstore.get("iam-least-priv", MemoryScope.GLOBAL)
+    assert mem.source == "user"
+    assert mem.direction is Direction.DENY
+    assert mem.body == "사용자 편집본"
+
+
 # ── ⑧ sync ───────────────────────────────────────────────────────────
 
 

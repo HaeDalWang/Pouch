@@ -13,6 +13,8 @@ from enum import Enum
 
 import frontmatter
 
+from pouch.memory.model import Direction, MemoryScope
+
 
 class ToolKind(str, Enum):
     """아티팩트 종류."""
@@ -37,6 +39,44 @@ class Ownership(str, Enum):
 # 표면을 관리한다(install/uninstall 가능). "plugin"이면 플러그인 시스템이
 # 표면을 관리하므로 pouch는 관측만 한다(중복 등록·거짓 drop 방지).
 SURFACE_PLUGIN = "plugin"
+
+
+@dataclass(frozen=True)
+class RecommendedBoundary:
+    """엔트리가 딸고 오는 권장 boundary의 씨앗.
+
+    도구 파일엔 boundary 선언 필드가 없다(산문에서 뽑으면 deny 오독 위험). 그래서
+    이건 큐레이터(사람, 나중엔 시작 세트)가 엔트리에 명시적으로 붙인 씨앗이다.
+    설치 시 recommended_boundary_memories가 이걸 진짜 boundary 메모리로 태어나게
+    하며 source=vendored:<엔트리id>를 도장 찍는다 — 그게 drop gate의 열쇠다.
+
+    방향·스코프는 메모리 타입을 그대로 재사용한다(카탈로그→메모리 정방향 의존).
+    """
+
+    name: str
+    description: str
+    body: str
+    direction: Direction
+    scope: MemoryScope = MemoryScope.GLOBAL
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "body": self.body,
+            "direction": self.direction.value,
+            "scope": self.scope.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> RecommendedBoundary:
+        return cls(
+            name=data["name"],
+            description=data.get("description", ""),
+            body=data.get("body", ""),
+            direction=Direction(data["direction"]),
+            scope=MemoryScope(data.get("scope", MemoryScope.GLOBAL.value)),
+        )
 
 
 @dataclass(frozen=True)
@@ -86,6 +126,7 @@ class ToolEntry:
     region: str | None = None  # linked
     aliases: tuple[str, ...] = ()  # 런타임 별칭(usage 추적이 보는 이름) — 예: plugin_<플러그인>_<서버>
     surface: str | None = None  # 표면 통제권: None=pouch 관리, SURFACE_PLUGIN=플러그인 관리(관측만)
+    recommended_boundaries: tuple[RecommendedBoundary, ...] = ()  # 딸고 오는 권장 boundary 씨앗
 
     @classmethod
     def owned(
@@ -169,6 +210,14 @@ class ToolEntry:
     def has_tag(self, tag: str) -> bool:
         return tag in self.tags
 
+    def with_recommended_boundaries(
+        self, recs: tuple[RecommendedBoundary, ...] | list[RecommendedBoundary]
+    ) -> ToolEntry:
+        """권장 boundary를 붙인 새 엔트리를 반환한다(불변)."""
+        from dataclasses import replace
+
+        return replace(self, recommended_boundaries=tuple(recs))
+
     def to_markdown(self) -> str:
         """frontmatter 마크다운으로 직렬화. owned만 본문(body)을 가진다."""
         meta: dict = {
@@ -195,6 +244,10 @@ class ToolEntry:
             meta["aliases"] = list(self.aliases)
         if self.surface:
             meta["surface"] = self.surface
+        if self.recommended_boundaries:
+            meta["recommended_boundaries"] = [
+                rec.to_dict() for rec in self.recommended_boundaries
+            ]
         return frontmatter.dumps(frontmatter.Post(self.body or "", **meta))
 
     @classmethod
@@ -220,6 +273,10 @@ class ToolEntry:
             region=meta.get("region"),
             aliases=tuple(meta.get("aliases", ())),
             surface=meta.get("surface"),
+            recommended_boundaries=tuple(
+                RecommendedBoundary.from_dict(r)
+                for r in meta.get("recommended_boundaries", ())
+            ),
         )
 
 

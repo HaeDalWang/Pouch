@@ -9,7 +9,13 @@ from rich.console import Console
 
 from pouch.memory.context import render_context
 from pouch.memory.liveness import check_reference_alive
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
+from pouch.memory.model import (
+    Direction,
+    MemoryEntry,
+    MemoryScope,
+    MemoryState,
+    MemoryType,
+)
 from pouch.memory.pending import is_low_friction
 from pouch.memory.recall import recall as recall_fn
 from pouch.memory.recall import touch_recalled
@@ -36,17 +42,31 @@ def add(
     pending: bool = typer.Option(
         False, "--pending", help="확인 전 스테이징(저마찰 타입만: project·reference)."
     ),
+    direction: Direction | None = typer.Option(
+        None, "--direction", help="boundary 방향(allow/ask/deny). boundary 타입에만."
+    ),
 ) -> None:
     """새 기억을 담는다(같은 이름은 덮어씀).
 
     --pending은 project·reference에만 허용된다 — feedback·boundary·user는
     오독한 지적이 매 세션 주입되는 standing rule로 굳는 위험이 있어 확인 없이
     스테이징하는 우회를 코드로 막는다(들어오는 문의 타입별 마찰).
+
+    --direction은 boundary에만 의미 있다. CLI로 담는 boundary의 출처는 항상
+    사람(user)이다 — vendored 출처는 도구 설치 경로만 새길 수 있어(참칭 불가),
+    여기서 source 플래그를 노출하지 않는다.
     """
     if pending and not is_low_friction(mem_type):
         console.print(
             f"[red]✗[/red] '{mem_type.value}'는 확인 없이 스테이징할 수 없습니다 — "
             "--pending 없이 바로 담거나, 사용자 확인을 받으세요."
+        )
+        raise typer.Exit(code=1)
+
+    if direction is not None and mem_type is not MemoryType.BOUNDARY:
+        console.print(
+            f"[red]✗[/red] --direction은 boundary 타입에만 붙습니다 "
+            f"('{mem_type.value}'에는 방향 개념이 없습니다)."
         )
         raise typer.Exit(code=1)
 
@@ -57,6 +77,7 @@ def add(
         type=mem_type,
         scope=scope,
         state=MemoryState.PENDING if pending else MemoryState.INDEXED,
+        direction=direction,
     )
     try:
         path = _store().save(entry)

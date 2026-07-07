@@ -188,3 +188,104 @@ def test_direct_mcp_import_is_pouch_surfaced(tmp_path: Path, store: CatalogStore
 
     assert entries[0].aliases == ()
     assert entries[0].surface is None
+
+
+# --- 커버리지 갭: plugin이 commands/·agents/도 원자로 분해해야 한다 (ECC 구조) ---
+
+_AGENT_MD = """---
+name: code-reviewer
+description: 코드 품질·보안 리뷰 에이전트
+tools: ["Read", "Grep"]
+---
+
+# Reviewer
+에이전트 본문 — 카탈로그에 새면 안 된다.
+"""
+
+_COMMAND_MD = """---
+description: 두 리뷰어가 모두 통과해야 배포하는 수렴 루프
+---
+
+# Santa Loop
+명령 본문 — 카탈로그에 새면 안 된다.
+"""
+
+
+@pytest.fixture
+def full_plugin_dir(tmp_path: Path) -> Path:
+    """ECC 구조를 본뜬 plugin: skills + commands + agents (mcp 없음)."""
+    root = tmp_path / "plugin" / "ecc"
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(
+        '{"name": "ecc", "version": "2.0.0"}', encoding="utf-8"
+    )
+    sdir = root / "skills" / "tdd-workflow"
+    sdir.mkdir(parents=True)
+    (sdir / "SKILL.md").write_text(_skill_md("tdd-workflow"), encoding="utf-8")
+    (root / "commands").mkdir()
+    (root / "commands" / "santa-loop.md").write_text(_COMMAND_MD, encoding="utf-8")
+    (root / "agents").mkdir()
+    (root / "agents" / "reviewer-file.md").write_text(_AGENT_MD, encoding="utf-8")
+    return root
+
+
+def test_plugin_decomposes_commands_and_agents(
+    full_plugin_dir: Path, store: CatalogStore
+) -> None:
+    # Act
+    result = import_plugin(full_plugin_dir, store, synced_at="2026-07-07")
+
+    # Assert — skill + command(파일명 id) + agent(name 필드 id) 셋 다 원자로.
+    by_id = {e.id: e for e in result.entries}
+    assert by_id["tdd-workflow"].kind is ToolKind.SKILL
+    assert by_id["santa-loop"].kind is ToolKind.COMMAND  # 파일명 stem
+    assert "code-reviewer" in by_id  # agent는 name 필드(파일명 reviewer-file 아님)
+    assert by_id["code-reviewer"].kind is ToolKind.AGENT
+    # 셋 다 vendored, body 안 들임
+    assert all(by_id[i].ownership is Ownership.VENDORED for i in by_id)
+    assert all(by_id[i].body is None for i in by_id)
+
+
+def test_plugin_broken_command_skipped_loudly(
+    full_plugin_dir: Path, store: CatalogStore
+) -> None:
+    # 명령은 파일명이 id라 name이 없어도 안 깨진다 — 하지만 파싱 자체가 깨진
+    # 파일은 건너뛰되 보고한다(스킬과 같은 격리 원칙).
+    bad = full_plugin_dir / "commands" / "broken.md"
+    bad.write_text("---\n: : : 깨진 yaml : :\n---\n본문", encoding="utf-8")
+
+    result = import_plugin(full_plugin_dir, store, synced_at="2026-07-07")
+
+    # 성한 것들은 담기고, 깨진 하나만 skipped로 보고된다
+    assert "santa-loop" in {e.id for e in result.entries}
+    assert any("broken" in s.path for s in result.skipped)
+
+
+_RULE_MD = """---
+paths: ["**/*.py"]
+---
+
+# Python Coding Style
+규칙 본문.
+"""
+
+
+def test_plugin_decomposes_rules_with_scoped_ids(
+    full_plugin_dir: Path, store: CatalogStore
+) -> None:
+    # 계층 규칙(python/·common/)이 부모 스코프 id로 원자 분해된다.
+    # 최상위 rules/README.md는 규칙이 아니라 구조 설명서라 담기지 않는다.
+    for lang in ("python", "common"):
+        rdir = full_plugin_dir / "rules" / lang
+        rdir.mkdir(parents=True)
+        (rdir / "coding-style.md").write_text(_RULE_MD, encoding="utf-8")
+    (full_plugin_dir / "rules" / "README.md").write_text("# Rules\n구조 설명", encoding="utf-8")
+
+    result = import_plugin(full_plugin_dir, store, synced_at="2026-07-07")
+
+    ids = {e.id for e in result.entries}
+    assert "python__coding-style" in ids
+    assert "common__coding-style" in ids
+    assert "README" not in ids  # 최상위 문서는 규칙 아님(한 겹 glob이 걸러냄)
+    rule_entries = [e for e in result.entries if e.kind is ToolKind.RULE]
+    assert all(e.ownership is Ownership.VENDORED for e in rule_entries)

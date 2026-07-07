@@ -45,14 +45,18 @@ boundary는 주입(에이전트가 알고 존중하게) + 제안까지만. PreTo
 > ~~기억 위생~~ — 2026-07-05 정책 락·구현 완료 (ROADMAP Phase 4.6 ④ 참조).
 > ~~백업/export~~ — 2026-07-07 v0 완료 (`pouch backup`/`restore`, 로컬 어댑터. ROADMAP Phase 4.6 후속 참조).
 > ~~usage.jsonl 위생~~ — 2026-07-07 완료 (접기/compaction, evolve 때 자동. ROADMAP Phase 4.6 후속 참조).
+> ~~커버리지 갭 (필수 3) + P1(boundary 출처)~~ — 2026-07-07 완료. command·agent·rule import +
+> boundary direction/source + 승격 통로 + drop gate. hook만 다음 조각으로 남김. ROADMAP Phase 4.6 후속 참조.
 
-### 3. 커버리지 갭 — kind 6개 중 2개만 담긴다
+### 3. 커버리지 갭 — kind 6개 중 2개만 담긴다 ✅ (2026-07-07, hook 제외 완료)
 
 - **걸린 약속**: 🪨 ("주머니에 담는다"의 범위가 선언 대비 1/3)
-- 카탈로그 kind는 skill/command/agent/rule/hook/mcp 6개인데 importer는 skill·mcp만 분해.
-  ECC의 rules·agents·commands는 주머니에 못 들어온다.
-- ⚠️ 이 작업을 할 때 [예고된 문제 P1(boundary 출처)]이 같이 터진다 — 함께 설계할 것.
-- **필수 4(시작 세트)의 선행 작업이기도 하다** — 세트에 hook·rule·agent를 담으려면 이 갭부터.
+- 카탈로그 kind는 skill/command/agent/rule/hook/mcp 6개인데 importer는 skill·mcp만 분해했다.
+  → **command·agent·rule 분해 추가**로 5종까지 열림. **hook만 남김** — hook은 "읽는 지식"이
+  아니라 "실행 레시피 + settings.json 배선"이라 성격이 달라(오히려 linked에 가까움) 다음 조각으로.
+- P1(boundary 출처)을 정면으로 함께 설계·완료 → 아래 [P1] 참조.
+- **필수 4(시작 세트)의 선행 작업이기도 하다** — 세트에 rule·agent를 담을 길이 이제 열렸다
+  (hook·system prompt는 신규 kind 논의 남음).
 
 ### 4. 시작 세트 — 콜드 스타트 온보딩 (2026-07-07, 배승도 아이디어)
 
@@ -86,17 +90,22 @@ boundary는 주입(에이전트가 알고 존중하게) + 제안까지만. PreTo
 
 ## 예고된 문제 — 지금 안 하지만, 터질 자리를 알고 있는 것
 
-### P1. boundary의 출처(provenance)
+### P1. boundary의 출처(provenance) — ✅ 해소 (2026-07-07)
 
-지금 boundary는 사용자가 직접 넣는 것뿐. 그런데 vendored 도구를 흡수하면 그 도구가
-권장 boundary를 딸고 올 수 있다(예: aws 스킬의 "prod 변경은 승인"). 그러면 출처가 둘:
+필수 3과 함께 정면으로 설계·완료했다. 확정 그림:
 
-- **사용자가 건 것** — 도구를 drop해도 남아야 한다
-- **도구가 딸려온 것** — 도구와 함께 내려가야 한다
+- **direction 필드** (allow/ask/deny) — boundary 설계가 "deny 오독 터질 때 박는다"고
+  예고한 그 필드를, drop을 방향으로 가르는 요구가 정당하게 당겼다. 산문에서 방향을
+  뽑지 않고(오독 위험) 명시 라벨로만 읽는다. context 주입에 `[DENY]` 라벨로 강조.
+- **source 필드** (`user` / `vendored:<도구id>`) — 사람이 건 것과 도구가 딸고 온 것을
+  가른다. CLI로는 `user`만 가능(참칭 불가), `vendored:`는 승격 통로만 프로그램으로 새김.
+- **승격 통로** — 엔트리의 권장 boundary(`RecommendedBoundary` 씨앗)가 설치 시 진짜
+  boundary 메모리로 태어나며 출처 도장을 단다. 없을 때만 심음(재부착이 사용자 편집 안 뭉갬).
+- **drop gate** — 도구 내릴 때 그 도구 출신 중 **allow는 함께 강등, ask·deny·방향불명은
+  잔존+경고**. 사람이 건 것은 방향 무관 잔존. 안전 비대칭(허용 좁게·금지 넓게)과 일치.
 
-구분이 없으면 사용자가 "이 boundary 왜 있지?" 헷갈리고, drop 시 무엇을 남길지 결정할
-수 없다. overlay를 body에서 분리한 것과 같은 정신 — boundary에 `source: user | vendored`
-구분이 필요해질 것. **필수 3(커버리지 갭)을 채울 때 같이 터지므로 그때 함께 설계.**
+근거·세부는 [[pouch-boundary-design]] 메모리, 용어는 [GLOSSARY.md](docs/GLOSSARY.md)
+(경계의 방향/출처) 참조.
 
 ---
 

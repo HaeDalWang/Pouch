@@ -168,3 +168,51 @@ def test_promote_moves_pending_to_indexed(workspace: Path) -> None:
 def test_promote_missing_exits_nonzero(workspace: Path) -> None:
     result = runner.invoke(app, ["promote", "ghost"])
     assert result.exit_code == 1
+
+
+def test_add_boundary_with_direction_stores_user_source(workspace: Path) -> None:
+    # 사람이 직접 건 방향 있는 경계 — 출처는 자동으로 user(참칭 불가).
+    from pouch.memory.model import Direction, MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    result = runner.invoke(
+        app,
+        ["add", "-n", "no-force", "-d", "force push 금지", "-b", "force push 하지 마라",
+         "-t", "boundary", "-s", "global", "--direction", "deny"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    stored = MemoryStore().get("no-force", MemoryScope.GLOBAL)
+    assert stored is not None
+    assert stored.direction is Direction.DENY
+    assert stored.source == "user"  # CLI로 건 것은 언제나 사람 출처
+
+
+def test_add_direction_rejected_on_non_boundary(workspace: Path) -> None:
+    # direction은 boundary에만 의미 있다 — 다른 타입에 붙는 잡음을 코드로 막는다.
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    result = runner.invoke(
+        app,
+        ["add", "-n", "x", "-d", "d", "-b", "b", "-t", "user", "-s", "global",
+         "--direction", "allow"],
+    )
+
+    assert result.exit_code != 0
+    assert MemoryStore().get("x", MemoryScope.GLOBAL) is None
+
+
+def test_add_boundary_without_direction_still_works(workspace: Path) -> None:
+    # 방향 불명 경계도 담긴다(하위호환 — 방향은 선택).
+    from pouch.memory.model import MemoryScope
+    from pouch.memory.store import MemoryStore
+
+    result = runner.invoke(
+        app,
+        ["add", "-n", "vague", "-d", "d", "-b", "b", "-t", "boundary", "-s", "global"],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    stored = MemoryStore().get("vague", MemoryScope.GLOBAL)
+    assert stored is not None and stored.direction is None

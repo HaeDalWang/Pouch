@@ -75,4 +75,55 @@ init이 "이 중에서 너에게 맞는 걸 골라줄게"를 할 수 있다. 후
 
 ---
 
+## 경계의 방향 (direction) — allow / ask / deny
+
+**쉬운 말** — 에이전트에게 거는 규칙(경계)이 어느 쪽인지. 세 가지다:
+**허용(allow)** "dev는 자율로 해라" / **확인(ask)** "prod 바꾸기 전엔 물어봐라" /
+**금지(deny)** "force push는 하지 마라".
+
+**왜 이 개념이 생겼나** — 원래 경계는 자연어 문장 하나였다("테스트 통과 시 커밋
+자율, force는 금지"). 사람은 읽으면 알지만, 기계가 이 문장에서 방향을 뽑으려다
+**금지를 허용으로 잘못 읽는 사고**가 가장 위험했다. 그래서 방향을 문장 속에
+묻어두지 않고 대괄호 라벨로 꺼내 박았다 — 기계는 이제 산문을 해석할 필요 없이
+`[DENY]`를 그냥 읽는다. 도구를 내릴 때 "무엇을 함께 내리고 무엇을 남길지"도
+이 방향이 가른다(허용은 도구와 함께, 금지·확인은 남김).
+
+**헷갈리기 쉬운 점** — 방향이 붙어도 pouch는 **막지 않는다**. 방향은 에이전트가
+"알고 존중하게" 하는 것이지 강제(차단)가 아니다(진짜 강제는 IAM·SCP의 일 —
+[BACKLOG.md](../BACKLOG.md) D1). 또 방향은 경계(boundary)에만 있다 — 일반 기억엔
+방향 개념이 없다. 방향이 비어 있는 옛 경계는 "잘 모름"으로 취급해 **안전 쪽
+(남김)** 으로 처리한다.
+
+**위치** — 정의 [src/pouch/memory/model.py](../src/pouch/memory/model.py)
+(`Direction`) · 주입 라벨 [src/pouch/memory/context.py](../src/pouch/memory/context.py)
+· 내릴 때 가르기 [src/pouch/catalog/boundary.py](../src/pouch/catalog/boundary.py)
+(`plan_boundary_drop`)
+
+---
+
+## 경계의 출처 (source) — 누가 이 규칙을 걸었나
+
+**쉬운 말** — 이 경계를 **사람이 직접** 걸었는지(`user`), 아니면 **도구가 딸고
+왔는지**(`vendored:<도구이름>`)의 꼬리표. 예: aws-cdk 도구를 담을 때 "prod는
+승인" 경계가 함께 따라왔다면 그 경계의 출처는 `vendored:aws-cdk`다.
+
+**왜 이 개념이 생겼나** — 도구를 내릴 때 경계를 어떻게 할지 정하려면 출처를
+알아야 했다. 사람이 손수 건 규칙은 도구를 내려도 **남아야** 한다(내 규칙이니까).
+도구가 딸고 온 규칙은 도구와 운명을 같이해야 한다(그 도구 쓰려고 생긴 거니까).
+출처 꼬리표가 없으면 "이 경계 왜 있지?"도 헷갈리고, 내릴 때 무엇을 남길지도
+정할 수 없다. body와 개인화(overlay)를 갈라둔 것과 같은 정신 — 출신이 다르면
+운명도 달라야 한다.
+
+**헷갈리기 쉬운 점** — 출처는 CLI로 **주장할 수 없다**. `pouch memory add`로
+직접 담는 경계는 정의상 언제나 `user`다 — 플래그로 `vendored:foo`인 척하게
+허용하면 "누가 만들었나"의 의미가 무너진다. `vendored:` 출처는 도구를 설치하는
+경로(승격 통로)만 프로그램으로 새길 수 있다.
+
+**위치** — 정의 [src/pouch/memory/model.py](../src/pouch/memory/model.py)
+(`SOURCE_USER`, `VENDORED_SOURCE_PREFIX`) · 도구 설치 시 새기기(승격)
+[src/pouch/catalog/boundary.py](../src/pouch/catalog/boundary.py)
+(`recommended_boundary_memories`)
+
+---
+
 *(다음 항목은 다음에 막히는 단어에서.)*

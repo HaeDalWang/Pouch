@@ -30,6 +30,29 @@ class MemoryScope(str, Enum):
     PROJECT = "project"
 
 
+class Direction(str, Enum):
+    """boundary의 방향 — 허용·확인·금지.
+
+    도구를 내릴(drop) 때 이 방향이 처리를 가른다:
+    - ALLOW: 도구가 딸고 온 허용은 도구와 함께 내려간다(허용은 좁게).
+    - ASK/DENY: 도구가 내려가도 잔존한다(금지·확인은 넓게 — 안전 쪽).
+
+    필드가 None인 옛/방향불명 boundary는 gate에서 잔존으로 안전하게 취급한다.
+    산문에서 방향을 기계가 뽑지 않는다 — deny 오독 위험이라 명시 필드로만 읽는다.
+    """
+
+    ALLOW = "allow"
+    ASK = "ask"
+    DENY = "deny"
+
+
+# boundary의 출처 — drop gate가 "무엇을 남길지" 가르는 축.
+# 기본은 사람이 직접 건 것(SOURCE_USER)이라 도구를 내려도 무조건 잔존한다.
+# 도구가 딸고 온 것은 "vendored:<도구id>"로 새겨, 그 도구 drop 시 방향에 따라 처리.
+SOURCE_USER = "user"
+VENDORED_SOURCE_PREFIX = "vendored:"
+
+
 class MemoryState(str, Enum):
     """기억의 생명 계층 — "drop ≠ 삭제"의 기억판.
 
@@ -57,6 +80,8 @@ class MemoryEntry:
     created: date = field(default_factory=date.today)
     state: MemoryState = MemoryState.INDEXED
     last_recalled: date | None = None  # recall 이벤트가 갱신(구조 슬롯; 빈도-면역 로직은 defer)
+    direction: Direction | None = None  # boundary 전용. None=방향불명(gate에서 잔존)
+    source: str = SOURCE_USER  # boundary 출처. "user" 또는 "vendored:<도구id>"
 
     def to_markdown(self) -> str:
         """frontmatter 마크다운 문자열로 직렬화한다.
@@ -76,6 +101,10 @@ class MemoryEntry:
             meta["state"] = self.state.value
         if self.last_recalled is not None:
             meta["last_recalled"] = self.last_recalled.isoformat()
+        if self.direction is not None:
+            meta["direction"] = self.direction.value
+        if self.source != SOURCE_USER:
+            meta["source"] = self.source
         return frontmatter.dumps(frontmatter.Post(self.body, **meta))
 
     @classmethod
@@ -84,6 +113,7 @@ class MemoryEntry:
         post = frontmatter.loads(text)
         meta = post.metadata
         last_recalled = meta.get("last_recalled")
+        direction = meta.get("direction")
         return cls(
             name=name,
             description=str(meta.get("description", "")),
@@ -94,6 +124,8 @@ class MemoryEntry:
             created=_coerce_date(meta.get("created")),
             state=MemoryState(meta.get("state", MemoryState.INDEXED.value)),
             last_recalled=_coerce_date(last_recalled) if last_recalled is not None else None,
+            direction=Direction(direction) if direction is not None else None,
+            source=str(meta.get("source", SOURCE_USER)),
         )
 
 

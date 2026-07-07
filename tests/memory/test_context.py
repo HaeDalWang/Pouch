@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from pouch.memory.context import render_context
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+from pouch.memory.model import Direction, MemoryEntry, MemoryScope, MemoryType
 
 
 def _entry(name: str, scope: MemoryScope = MemoryScope.GLOBAL) -> MemoryEntry:
@@ -80,3 +80,39 @@ def test_boundary_includes_safety_guidance() -> None:
     # Assert — deny 넓게 / allow 좁게 해석 지침
     assert "금지" in out
     assert "허용" in out
+
+
+def _directed(name: str, direction: Direction) -> MemoryEntry:
+    return MemoryEntry(
+        name=name,
+        description=f"{name} 경계",
+        body="본문",
+        type=MemoryType.BOUNDARY,
+        scope=MemoryScope.GLOBAL,
+        direction=direction,
+        created=date(2026, 7, 7),
+    )
+
+
+def test_boundary_direction_labeled_explicitly() -> None:
+    # Act — 방향이 명시된 세 경계
+    out = render_context(
+        [
+            _directed("d", Direction.DENY),
+            _directed("a", Direction.ALLOW),
+            _directed("k", Direction.ASK),
+        ]
+    )
+
+    # Assert — 방향이 산문이 아니라 명시 라벨로 붙는다(오독 방지)
+    assert "DENY" in out
+    assert "ALLOW" in out
+    assert "ASK" in out
+
+
+def test_boundary_without_direction_still_renders() -> None:
+    # 방향 불명(옛 boundary)도 라벨 없이 그대로 주입된다(하위호환)
+    out = render_context([_boundary("legacy", MemoryScope.PROJECT)])
+
+    assert "legacy" in out
+    assert "force push 금지" in out

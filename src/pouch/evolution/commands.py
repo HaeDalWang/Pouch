@@ -21,6 +21,7 @@ import typer
 from rich.console import Console
 
 from pouch import paths
+from pouch.catalog.boundary import plan_boundary_drop
 from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
 from pouch.evolution.candidates import DropCandidate, EvolveConfig
@@ -147,6 +148,30 @@ def _propose_drops(
     ]
     console.print(f"\n[green]✓[/green] {len(dropped)}개 내렸습니다: {', '.join(dropped)}")
     console.print("   다시 쓰고 싶으면 재설치 한 번이면 됩니다(개인화는 그대로 살아있어요).")
+
+    for entry_id in dropped:
+        _gate_boundaries_for_dropped(entry_id)
+
+
+def _gate_boundaries_for_dropped(entry_id: str) -> None:
+    """내려간 도구가 딸고 왔던 boundary를 방향으로 가른다(P1 drop gate).
+
+    allow는 도구와 함께 강등(허용은 좁게), ask·deny·방향불명은 잔존+경고
+    (금지·확인은 넓게 — 사라지는 게 위험). 사람이 건 것은 애초에 대상이 아니다.
+    """
+    mstore = MemoryStore()
+    plan = plan_boundary_drop(list(mstore.list()), entry_id)
+    for mem in plan.to_demote:
+        mstore.demote(mem)
+        console.print(
+            f"   [dim]· 경계 '{mem.name}'(allow)를 함께 내렸습니다 — 도구와 짝.[/dim]"
+        )
+    for mem in plan.to_keep:
+        console.print(
+            f"   [yellow]⚑[/yellow] 경계 '{mem.name}'"
+            f"[{mem.direction.value if mem.direction else '?'}]는 남겼습니다 — "
+            "출처 도구가 내려갔으니 유효성 확인 요망."
+        )
 
 
 def _propose_attaches(

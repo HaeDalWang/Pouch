@@ -45,13 +45,17 @@ def _render_boundaries(boundaries: list[MemoryEntry]) -> list[str]:
     lines = [
         "## ⚠️ 자율성 경계 — 반드시 따를 것",
         "",
+        "각 항목 앞 대괄호 라벨([DENY]/[ASK]/[ALLOW])이 방향의 권위다 — "
+        "본문 산문이 애매하면 라벨을 따르라. "
         "금지(deny)는 항상 우선하며 넓게 해석하라. "
         "허용(allow)은 아래에 적힌 범위 안에서만 좁게 적용하라. "
+        "확인(ask)은 실행 전 사용자에게 물어라. "
         "프로젝트 범위 허용을 이 프로젝트 밖으로 확장하지 마라.",
         "",
     ]
     for entry in boundaries:
-        lines.append(f"- **{entry.name}** [{entry.scope.value}] — {entry.description}")
+        label = f"[{entry.direction.value.upper()}] " if entry.direction else ""
+        lines.append(f"- {label}**{entry.name}** [{entry.scope.value}] — {entry.description}")
         body = entry.body.strip()
         if body:
             lines.extend(f"  {body_line}" for body_line in body.splitlines())

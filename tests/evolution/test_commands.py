@@ -98,6 +98,66 @@ def test_contract4_evolve_yes_drops_candidate(tmp_path: Path, monkeypatch) -> No
     assert survived is not None and survived.overlay.boundaries == ("prod-gate",)
 
 
+def test_evolve_drop_gates_boundaries_by_direction(tmp_path: Path, monkeypatch) -> None:
+    # 도구를 내릴 때 그 도구 출신 boundary를 방향으로 가른다(P1 drop gate 배선):
+    # allow는 함께 강등, deny는 잔존. 사람이 건 것은 무관하게 잔존.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+
+    from pouch.catalog.install import install_entry
+    from pouch.catalog.model import ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.state import record_installed
+    from pouch.memory.model import (
+        Direction,
+        MemoryEntry,
+        MemoryScope,
+        MemoryState,
+        MemoryType,
+    )
+    from pouch.memory.store import MemoryStore
+
+    upstream = tmp_path / "up" / "aws-cdk" / "SKILL.md"
+    upstream.parent.mkdir(parents=True)
+    upstream.write_text("---\nname: aws-cdk\ndescription: d\n---\n\n본문", encoding="utf-8")
+    entry = ToolEntry.vendored(
+        id="aws-cdk", kind=ToolKind.SKILL, source="aws", title="aws-cdk",
+        description="d", upstream=str(upstream), synced_at="2026-01-01",
+    )
+    store = CatalogStore()
+    store.save(entry)
+    skills_dir = tmp_path / "skills"
+    mcp_config = tmp_path / ".mcp.json"
+    install_entry(entry, skills_dir=skills_dir, mcp_config_path=mcp_config)
+    record_installed("aws-cdk", now="2026-01-01T00:00:00")  # 오래 전, 미사용 → drop 후보
+
+    # 이 도구가 딸고 온 두 경계 + 사람이 건 하나
+    mstore = MemoryStore()
+    for name, direction, source in [
+        ("cdk-dev-auto", Direction.ALLOW, "vendored:aws-cdk"),
+        ("cdk-no-destroy", Direction.DENY, "vendored:aws-cdk"),
+        ("my-own-rule", Direction.ALLOW, "user"),
+    ]:
+        mstore.save(
+            MemoryEntry(
+                name=name, description="d", body="b", type=MemoryType.BOUNDARY,
+                scope=MemoryScope.GLOBAL, direction=direction, source=source,
+            )
+        )
+
+    result = runner.invoke(
+        app,
+        ["evolve", "--yes", "--skills-dir", str(skills_dir), "--mcp-config", str(mcp_config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    # allow(도구 출신)는 함께 강등
+    assert mstore.get("cdk-dev-auto", MemoryScope.GLOBAL).state is MemoryState.ARCHIVED
+    # deny(도구 출신)는 잔존
+    assert mstore.get("cdk-no-destroy", MemoryScope.GLOBAL).state is MemoryState.INDEXED
+    # 사람이 건 것은 방향 무관하게 잔존
+    assert mstore.get("my-own-rule", MemoryScope.GLOBAL).state is MemoryState.INDEXED
+
+
 def test_contract5_evolve_shows_pending_and_promotes_on_yes(tmp_path: Path, monkeypatch) -> None:
     # 기억의 들어오는 문 — pending 스테이징을 evolve가 같은 화면에 보여주고 확인시킨다.
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))

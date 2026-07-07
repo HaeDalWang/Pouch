@@ -20,6 +20,17 @@ from pouch.catalog.store import CatalogStore
 # AWS 리전 패턴 (us-east-1, eu-west-2, ap-southeast-1 …) — MCP 엔드포인트에서 추출.
 _AWS_REGION_RE = re.compile(r"\b([a-z]{2}-[a-z]+-\d+)\b")
 
+# plugin 안에서 문서형 도구가 사는 자리 — (하위디렉토리, glob, kind).
+# 스킬만 `<이름>/SKILL.md`로 한 겹 더 들어가고, 명령·에이전트는 평면 `*.md`.
+# ToolKind는 함수 정의부에서 import되지만 상수는 지연 참조를 피하려 아래서 채운다.
+_DOC_SUBDIRS = (
+    ("skills", "*/SKILL.md", ToolKind.SKILL),
+    ("commands", "*.md", ToolKind.COMMAND),
+    ("agents", "*.md", ToolKind.AGENT),
+    # 규칙은 rules/<lang>/<name>.md 한 겹 — `*/*.md`가 최상위 README.md를 제외한다.
+    ("rules", "*/*.md", ToolKind.RULE),
+)
+
 
 @dataclass(frozen=True)
 class SkillSource:
@@ -75,6 +86,68 @@ def read_skill(path: Path, *, upstream: str) -> SkillSource:
     )
 
 
+# frontmatter `name`이 정체(id)의 권위인 kind — 파일명과 달라도 name을 쓴다.
+# COMMAND는 여기 없다: 슬래시 명령엔 name 필드가 없고 파일명이 곧 런타임 id다.
+_NAME_AUTHORITATIVE_KINDS = frozenset({ToolKind.SKILL, ToolKind.AGENT})
+
+
+def _resolve_doc_id(path: Path, meta: dict, kind: ToolKind) -> str:
+    """문서형 도구(skill/agent/command)의 정체(id)를 kind에 따라 해석한다.
+
+    skill·agent는 frontmatter name이 권위(없으면 실패 — 디렉토리명 추측 금지 원칙).
+    command는 name 필드가 없으므로 파일명 stem이 정체다(추측이 아니라 런타임이
+    실제로 쓰는 슬래시 명령 이름 — 예: santa-loop.md → santa-loop).
+    """
+    if kind in _NAME_AUTHORITATIVE_KINDS:
+        return _require_name(meta, path)
+    if kind is ToolKind.RULE:
+        # coding-style.md가 python/·common/… 여러 곳에 겹친다. 부모 디렉토리로
+        # 스코프해 유니크하게 만들되, store가 평면(`<id>.md`)이라 "/" 대신 "__".
+        return f"{path.parent.name}__{path.stem}"
+    return path.stem
+
+
+def import_vendored_doc(
+    path: Path,
+    store: CatalogStore,
+    *,
+    kind: ToolKind,
+    upstream: str,
+    synced_at: str,
+    source: str = "aws",
+    tags: tuple[str, ...] = ("vendor:aws",),
+) -> ToolEntry:
+    """문서형 도구(skill/agent/command)를 vendored 항목으로 들인다.
+
+    셋 다 `.md` 하나 = 도구 하나, 본체(body)를 안 들이는 계약이 같다. 유일한
+    차이는 id 해석(_resolve_doc_id)뿐이라 한 함수로 묶는다. 재import 시 기존
+    overlay·tags를 보존한다(멱등).
+    """
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    meta = post.metadata
+    entry_id = _resolve_doc_id(path, meta, kind)
+    title = str(meta.get("title") or meta.get("name") or entry_id)
+    description = str(meta.get("description", ""))
+
+    existing = store.get(entry_id)
+    preserved_overlay = existing.overlay if existing else None
+    preserved_tags = existing.tags if existing else tags
+
+    entry = ToolEntry.vendored(
+        id=entry_id,
+        kind=kind,
+        source=source,
+        title=title,
+        description=description,
+        upstream=upstream,
+        synced_at=synced_at,
+        overlay=preserved_overlay,
+        tags=preserved_tags,
+    )
+    store.save(entry)
+    return entry
+
+
 def import_vendored_skill(
     path: Path,
     store: CatalogStore,
@@ -84,26 +157,19 @@ def import_vendored_skill(
     source: str = "aws",
     tags: tuple[str, ...] = ("vendor:aws",),
 ) -> ToolEntry:
-    """SKILL.md를 vendored 항목으로 들인다. 재import 시 기존 overlay를 보존한다."""
-    src = read_skill(path, upstream=upstream)
+    """SKILL.md를 vendored 항목으로 들인다(import_vendored_doc의 skill 특화).
 
-    existing = store.get(src.id)
-    preserved_overlay = existing.overlay if existing else None
-    preserved_tags = existing.tags if existing else tags
-
-    entry = ToolEntry.vendored(
-        id=src.id,
+    기존 호출부·테스트 호환을 위해 유지한다 — 실제 일은 import_vendored_doc이 한다.
+    """
+    return import_vendored_doc(
+        path,
+        store,
         kind=ToolKind.SKILL,
-        source=source,
-        title=src.title,
-        description=src.description,
-        upstream=src.upstream,
+        upstream=upstream,
         synced_at=synced_at,
-        overlay=preserved_overlay,
-        tags=preserved_tags,
+        source=source,
+        tags=tags,
     )
-    store.save(entry)
-    return entry
 
 
 def import_owned_skill(
@@ -241,22 +307,25 @@ def import_plugin(
             )
         )
 
-    skills_dir = plugin_dir / "skills"
-    if skills_dir.is_dir():
-        for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+    for subdir, pattern, kind in _DOC_SUBDIRS:
+        doc_dir = plugin_dir / subdir
+        if not doc_dir.is_dir():
+            continue
+        for doc_md in sorted(doc_dir.glob(pattern)):
             try:
                 entries.append(
-                    import_vendored_skill(
-                        skill_md,
+                    import_vendored_doc(
+                        doc_md,
                         store,
-                        upstream=str(skill_md),
+                        kind=kind,
+                        upstream=str(doc_md),
                         synced_at=synced_at,
                         source=source,
                         tags=tags,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 — 외부 번들은 신뢰 경계 밖
-                skipped.append(SkippedSkill(path=str(skill_md), reason=str(exc)))
+                skipped.append(SkippedSkill(path=str(doc_md), reason=str(exc)))
 
     return PluginImportResult(entries=tuple(entries), skipped=tuple(skipped))
 

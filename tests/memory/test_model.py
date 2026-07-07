@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
+from pouch.memory.model import (
+    Direction,
+    MemoryEntry,
+    MemoryScope,
+    MemoryState,
+    MemoryType,
+)
 
 
 def test_roundtrip_preserves_all_fields() -> None:
@@ -132,3 +138,60 @@ def test_boundary_type_roundtrips() -> None:
     # Assert
     assert restored == entry
     assert "type: boundary" in entry.to_markdown()
+
+
+def test_boundary_direction_and_source_roundtrip() -> None:
+    # Arrange — 도구가 딸고 온 '확인' 경계
+    entry = MemoryEntry(
+        name="prod-gate",
+        description="prod 변경은 승인",
+        body="prod 리소스 변경은 승인받아라.",
+        type=MemoryType.BOUNDARY,
+        scope=MemoryScope.GLOBAL,
+        direction=Direction.ASK,
+        source="vendored:aws-cdk",
+        created=date(2026, 7, 7),
+    )
+
+    # Act
+    restored = MemoryEntry.from_markdown(entry.name, entry.to_markdown())
+
+    # Assert
+    assert restored == entry
+    assert restored.direction is Direction.ASK
+    assert restored.source == "vendored:aws-cdk"
+
+
+def test_boundary_direction_source_default_and_omitted() -> None:
+    # 방향 불명(None) + 사람 출처(기본)는 프론트매터에 잡음을 안 남긴다
+    entry = MemoryEntry(
+        name="b", description="d", body="본문",
+        type=MemoryType.BOUNDARY, scope=MemoryScope.PROJECT,
+    )
+
+    text = entry.to_markdown()
+
+    assert "direction:" not in text
+    assert "source:" not in text
+    assert entry.direction is None
+    assert entry.source == "user"
+
+
+def test_legacy_boundary_loads_with_none_direction_user_source() -> None:
+    # direction·source 필드가 없는 옛 boundary(하위호환)
+    old = (
+        "---\n"
+        "name: auto-commit\n"
+        "description: 커밋 자율 허용\n"
+        "type: boundary\n"
+        "scope: project\n"
+        "weight: 0\n"
+        "created: 2026-06-29\n"
+        "---\n\n테스트 통과 시 커밋 자율.\n"
+    )
+
+    entry = MemoryEntry.from_markdown("auto-commit", old)
+
+    # 방향 불명은 gate에서 '잔존'으로 안전하게 취급되고, 출처는 사람으로 본다
+    assert entry.direction is None
+    assert entry.source == "user"
