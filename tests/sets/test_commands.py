@@ -1,6 +1,9 @@
 """세트 CLI·init 배선 계약 — 세트가 사용자를 만나는 두 입구.
 
-  ① `pouch set list` — 내장 세트("해달왕의 AWS DevOps 엔지니어 세트")가 보인다
+내장 세트는 현재 의도적으로 비어 있다: 지어낸 큐레이션은 "남이 만든 정답
+세트"라 철회됐고(배승도 판정, 2026-07-07), 실사용에서 굳힌 세트만 들어온다.
+
+  ① `pouch set list` — 세트가 없으면 없다고 안내한다 (내장은 비어 있음)
   ② `pouch set apply <이름> --yes` — 가져오고 올린 결과를 보고한다
   ③ 적용된 것 중 훅이 있으면 실행 명령 원문을 항상 출력한다 (배승도 결정)
   ④ init: 역할·스택이 세트와 맞으면 세트를 먼저 제안하고, --yes면 적용까지 간다
@@ -52,11 +55,21 @@ def _no_builtin(monkeypatch, tmp_path_factory):
     )
 
 
-def test_contract1_set_list_shows_builtin() -> None:
+def test_contract1_set_list_without_sets_says_so(_no_builtin) -> None:
     result = runner.invoke(app, ["set", "list"])
 
     assert result.exit_code == 0
-    assert "haedalwang-aws-devops" in result.stdout
+    assert "세트가 없습니다" in result.stdout
+
+
+def test_contract1b_set_list_shows_user_sets(tmp_path: Path, _no_builtin) -> None:
+    plugin = _fake_plugin(tmp_path / "plugin", ["aws-iam"])
+    _user_set("mine", source=str(plugin), install=["aws-iam"], match=["aws"])
+
+    result = runner.invoke(app, ["set", "list"])
+
+    assert result.exit_code == 0
+    assert "mine" in result.stdout
 
 
 def test_contract2_set_apply_reports(tmp_path: Path, _no_builtin) -> None:
