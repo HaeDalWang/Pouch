@@ -24,7 +24,7 @@ from pouch import paths
 from pouch.catalog.boundary import plan_boundary_drop
 from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
-from pouch.evolution.candidates import DropCandidate, EvolveConfig
+from pouch.evolution.candidates import DropCandidate, EvolveConfig, has_usage_signal
 from pouch.evolution.compaction import DEFAULT_COMPACT_AFTER_DAYS
 from pouch.evolution.orchestrate import (
     apply_drop,
@@ -96,7 +96,11 @@ def evolve(
         console.print(f"🧾 오래된 사용 기록 {folded}줄을 요약으로 접었어요(습관은 보존).\n")
 
     memory_store = MemoryStore()
-    drops = plan_evolution(now=now, config=EvolveConfig())
+    # 신호 없는 종류(훅·규칙·에이전트)는 "안 쓰임"을 판별할 수 없어 후보에서 뺀다.
+    drops = [
+        d for d in plan_evolution(now=now, config=EvolveConfig())
+        if has_usage_signal(store.get(d.entry_id))
+    ]
     attaches = plan_attach(now=now, store=store)
     pending = plan_memory_pending(memory_store)
     hygiene = plan_memory_hygiene(memory_store, now=datetime.now().date())

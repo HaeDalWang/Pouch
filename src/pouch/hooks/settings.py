@@ -99,6 +99,36 @@ def with_usage_hook_removed(settings: dict) -> dict:
     return _with_command_removed(settings, "PostToolUse", POUCH_USAGE_HOOK_COMMAND)
 
 
+def _recipe_commands(recipe: dict) -> list[str]:
+    """조리법 안의 명령 문자열들을 꺼낸다(배선·제거의 식별자)."""
+    return [h.get("command", "") for h in recipe.get("hooks", []) if h.get("command")]
+
+
+def with_recipe_installed(settings: dict, recipe: dict) -> dict:
+    """카탈로그 훅 조리법을 배선한 새 설정을 반환한다(다시 해도 결과 같음).
+
+    조리법 = {event, matcher?, hooks:[{type, command, ...}]}. pouch 자체 훅과
+    같은 안전장치를 탄다: 입력 dict 불변, 기존 배선 보존, 명령 문자열로 식별.
+    """
+    event = recipe["event"]
+    group: dict = {"hooks": recipe.get("hooks", [])}
+    if recipe.get("matcher"):
+        group["matcher"] = recipe["matcher"]
+    updated = settings
+    for command in _recipe_commands(recipe):
+        updated = _with_group_added(updated, event, group, command)
+    return updated
+
+
+def with_recipe_removed(settings: dict, recipe: dict) -> dict:
+    """카탈로그 훅 조리법의 배선만 걷어낸 새 설정을 반환한다. 나머지 보존."""
+    event = recipe["event"]
+    updated = settings
+    for command in _recipe_commands(recipe):
+        updated = _with_command_removed(updated, event, command)
+    return updated
+
+
 def write_settings(path: Path, settings: dict) -> Path | None:
     """설정을 기록한다. 기존 파일이 있었으면 백업하고 그 경로를 반환한다."""
     path.parent.mkdir(parents=True, exist_ok=True)

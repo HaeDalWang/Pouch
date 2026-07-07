@@ -19,6 +19,7 @@ from rich.console import Console
 from pouch import paths
 from pouch.catalog.importer import (
     PluginImportResult,
+    import_hooks,
     import_mcp_servers,
     import_owned_skill,
     import_plugin,
@@ -26,7 +27,7 @@ from pouch.catalog.importer import (
 )
 from pouch.catalog.boundary import recommended_boundary_memories
 from pouch.catalog.install import install_entry
-from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry
+from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
 from pouch.catalog.store import CatalogStore
 from pouch.memory.store import MemoryStore
 from pouch.catalog.sync import SyncReport, moved_component, sync_all
@@ -40,6 +41,7 @@ console = Console()
 
 _SKILL_FILENAME = "SKILL.md"
 _MCP_FILENAME = ".mcp.json"
+_HOOKS_FILENAME = "hooks.json"
 
 
 def _now() -> str:
@@ -63,7 +65,12 @@ def classify_source(path: Path) -> str:
         return "mcp"
     if path.name == _SKILL_FILENAME:
         return "skill"
-    raise ValueError(f"'{path}'는 import할 수 있는 형태가 아닙니다 (SKILL.md / .mcp.json / plugin 디렉토리).")
+    if path.name == _HOOKS_FILENAME:
+        return "hooks"
+    raise ValueError(
+        f"'{path}'는 import할 수 있는 형태가 아닙니다 "
+        "(SKILL.md / .mcp.json / hooks.json / plugin 디렉토리)."
+    )
 
 
 def _resolve_skill_path(path: Path) -> Path:
@@ -175,6 +182,9 @@ def _run_import(
     if kind == "mcp":
         servers = import_mcp_servers(path, store, source=source, tags=tags)
         return PluginImportResult(entries=tuple(servers))
+    if kind == "hooks":
+        hooks = import_hooks(path, store, source=source, tags=tags)
+        return PluginImportResult(entries=tuple(hooks))
     skill_path = _resolve_skill_path(path)
     if own:
         entry = import_owned_skill(skill_path, store, source=source, tags=tags, force=force)
@@ -203,6 +213,24 @@ def list_entries() -> None:
         console.print(f"  {surface} [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
 
 
+def _confirm_hook_install(entry: ToolEntry, *, yes: bool) -> bool:
+    """훅 설치 관문 — 실행될 명령 원문을 반드시 보여주고 동의를 받는다.
+
+    훅은 내 컴퓨터에서 명령을 실제로 실행하므로 다른 종류보다 관문이 무겁다.
+    --yes면 물음은 건너뛰되 원문 출력은 항상 남긴다(배승도 결정, 2026-07-07).
+    """
+    recipe = entry.recipe or {}
+    where = recipe.get("event", "?")
+    if recipe.get("matcher"):
+        where += f" ({recipe['matcher']})"
+    console.print(f"⚡ 이 훅은 [bold]{where}[/bold] 때마다 아래 명령을 실행합니다:")
+    for hook in recipe.get("hooks", []):
+        console.print(f"   [yellow]$ {hook.get('command', '')}[/yellow]")
+    if yes:
+        return True
+    return typer.confirm("이 명령이 실행되는 데 동의하나요?", default=False)
+
+
 @app.command("install")
 def install(
     entry_id: str = typer.Argument(..., help="설치할 카탈로그 항목 id."),
@@ -212,6 +240,7 @@ def install(
     mcp_config: Path = typer.Option(
         None, "--mcp-config", help=".mcp.json 위치(기본: 현재 프로젝트)."
     ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 설치(훅 명령 출력은 항상 남음)."),
 ) -> None:
     """항목을 활성 표면에 올린다 — drop된 도구의 재부착도 이 명령이다."""
     entry = CatalogStore().get(entry_id)
@@ -224,6 +253,9 @@ def install(
             "pouch가 또 등록하면 중복이 됩니다. 플러그인 설정에서 켜고 끄세요."
         )
         raise typer.Exit(code=1)
+    if entry.kind is ToolKind.HOOK and not _confirm_hook_install(entry, yes=yes):
+        console.print("설치하지 않았습니다.")
+        return
 
     try:
         result = install_entry(
@@ -271,6 +303,48 @@ def _promote_boundaries(entry: ToolEntry) -> None:
             f"  [green]+[/green] 권장 경계 심음: [bold]{mem.name}[/bold] "
             f"[{mem.direction.value if mem.direction else '?'}] — {mem.description}"
         )
+
+
+@app.command("uninstall")
+def uninstall(
+    entry_id: str = typer.Argument(..., help="표면에서 내릴 카탈로그 항목 id."),
+    skills_dir: Path = typer.Option(
+        None, "--skills-dir", help="스킬 설치 위치(기본: Claude skills)."
+    ),
+    mcp_config: Path = typer.Option(
+        None, "--mcp-config", help=".mcp.json 위치(기본: 현재 프로젝트)."
+    ),
+) -> None:
+    """항목을 표면에서 손으로 내린다 — 카탈로그·개인화는 남는다.
+
+    evolve가 제안 못 하는 종류(훅처럼 사용 신호가 안 찍히는 것)의 유일한
+    내리는 문이기도 하다. 되올리기는 [cyan]catalog install[/cyan] 한 번.
+    """
+    from pouch.catalog.uninstall import uninstall_entry
+    from pouch.evolution.state import mark_dropped
+
+    entry = CatalogStore().get(entry_id)
+    if entry is None:
+        console.print(f"[red]✗[/red] 카탈로그에 '{entry_id}'가 없습니다.")
+        raise typer.Exit(code=1)
+    if entry.surface == SURFACE_PLUGIN:
+        console.print(
+            f"[red]✗[/red] '{entry_id}'는 플러그인이 표면을 관리합니다 — "
+            "플러그인 설정에서 켜고 끄세요."
+        )
+        raise typer.Exit(code=1)
+
+    uninstall_entry(
+        entry,
+        skills_dir=skills_dir or paths.claude_skills_dir(),
+        mcp_config_path=mcp_config or paths.project_mcp_config_path(),
+    )
+    mark_dropped(entry_id)
+    console.print(
+        f"[green]✓[/green] [cyan]{entry_id}[/cyan]를 표면에서 내렸습니다"
+        " (카탈로그·개인화는 그대로). 되올리기: [cyan]pouch catalog install"
+        f" {entry_id}[/cyan]"
+    )
 
 
 @app.command("sync")

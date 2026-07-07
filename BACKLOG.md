@@ -46,17 +46,10 @@ boundary는 주입(에이전트가 알고 존중하게) + 제안까지만. PreTo
 > ~~백업/export~~ — 2026-07-07 v0 완료 (`pouch backup`/`restore`, 로컬 어댑터. ROADMAP Phase 4.6 후속 참조).
 > ~~usage.jsonl 위생~~ — 2026-07-07 완료 (접기/compaction, evolve 때 자동. ROADMAP Phase 4.6 후속 참조).
 > ~~커버리지 갭 (필수 3) + P1(boundary 출처)~~ — 2026-07-07 완료. command·agent·rule import +
-> boundary direction/source + 승격 통로 + drop gate. hook만 다음 조각으로 남김. ROADMAP Phase 4.6 후속 참조.
-
-### 3. 커버리지 갭 — kind 6개 중 2개만 담긴다 ✅ (2026-07-07, hook 제외 완료)
-
-- **걸린 약속**: 🪨 ("주머니에 담는다"의 범위가 선언 대비 1/3)
-- 카탈로그 kind는 skill/command/agent/rule/hook/mcp 6개인데 importer는 skill·mcp만 분해했다.
-  → **command·agent·rule 분해 추가**로 5종까지 열림. **hook만 남김** — hook은 "읽는 지식"이
-  아니라 "실행 레시피 + settings.json 배선"이라 성격이 달라(오히려 linked에 가까움) 다음 조각으로.
-- P1(boundary 출처)을 정면으로 함께 설계·완료 → 아래 [P1] 참조.
-- **필수 4(시작 세트)의 선행 작업이기도 하다** — 세트에 rule·agent를 담을 길이 이제 열렸다
-  (hook·system prompt는 신규 kind 논의 남음).
+> boundary direction/source + 승격 통로 + drop gate. **훅도 같은 날 완료** — 6종 전부 열림.
+> (조리법으로 담고 settings.json 배선, 설치 때 명령 원문 표시+동의, 신호 없는 종류는
+> drop 후보 제외 + `catalog uninstall` 신설.) ROADMAP Phase 4.6 후속 참조.
+> 시작 세트에 담을 재료가 다 갖춰졌다 — system prompt만 신규 kind 논의로 남음.
 
 ### 4. 시작 세트 — 콜드 스타트 온보딩 (2026-07-07, 배승도 아이디어)
 

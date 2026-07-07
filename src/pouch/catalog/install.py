@@ -2,7 +2,8 @@
 
   owned    : body가 내 것 → catalog body를 SKILL.md로 쓴다.
   vendored : body 미보유 → upstream을 다시 읽어 SKILL.md로 쓴다(catalog엔 본문 없음).
-  linked   : 파일이 아님 → .mcp.json의 mcpServers에 recipe를 등록한다(백업 동반).
+  linked   : 파일이 아님 → 배선 등록. kind가 자리를 가른다:
+             mcp → .mcp.json의 mcpServers / hook → settings.json의 hooks (둘 다 백업 동반).
 
 순수 함수(with_mcp_registered 등)는 입력 dict를 변경하지 않고 새 dict를 반환한다.
 파일 IO는 분리해 순수 로직만 단위 테스트할 수 있다(hooks/settings.py와 같은 결).
@@ -16,7 +17,8 @@ from pathlib import Path
 
 import frontmatter
 
-from pouch.catalog.model import Ownership, ToolEntry
+from pouch.catalog.model import Ownership, ToolEntry, ToolKind
+from pouch.hooks.settings import load_settings, with_recipe_installed, write_settings
 
 
 def install_skill_file(entry: ToolEntry, *, skills_dir: Path) -> Path:
@@ -90,6 +92,16 @@ def register_mcp(config_path: Path, entry: ToolEntry) -> Path | None:
     return backup
 
 
+def register_hook(settings_path: Path, entry: ToolEntry) -> Path | None:
+    """훅 항목의 조리법을 settings.json에 배선한다. 백업 경로를 반환한다.
+
+    pouch 자체 훅과 같은 안전장치(불변 조작·백업)를 그대로 탄다.
+    """
+    settings = load_settings(settings_path)
+    updated = with_recipe_installed(settings, entry.recipe or {})
+    return write_settings(settings_path, updated)
+
+
 def install_entry(
     entry: ToolEntry,
     *,
@@ -97,19 +109,26 @@ def install_entry(
     mcp_config_path: Path,
     now: str | None = None,
     state_path: Path | None = None,
+    settings_path: Path | None = None,
 ) -> Path:
     """ownership에 따라 설치하고, 결과 경로를 반환한다.
 
-    skill(owned/vendored)이면 SKILL.md 경로, linked면 MCP 설정 경로를 돌려준다.
+    skill(owned/vendored)이면 SKILL.md 경로, linked면 배선한 설정 경로를 돌려준다
+    (mcp → .mcp.json / hook → settings.json).
     설치는 활성 표면에 올리는 유일한 관문이라, 여기서 state.json에 active로 기록한다
     (evolve가 볼 데이터를 심는다). 재부착이면 installed_at을 갱신해 시계를 리셋한다.
     시계는 이 경계에서만 읽는다(now 미지정 시).
     """
     from datetime import datetime
 
+    from pouch import paths
     from pouch.evolution.state import record_installed
 
-    if entry.ownership is Ownership.LINKED:
+    if entry.kind is ToolKind.HOOK:
+        target = settings_path or paths.claude_settings_path()
+        register_hook(target, entry)
+        result = target
+    elif entry.ownership is Ownership.LINKED:
         register_mcp(mcp_config_path, entry)
         result = mcp_config_path
     else:

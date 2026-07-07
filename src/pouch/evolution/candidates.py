@@ -16,10 +16,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from pouch.catalog.model import ToolEntry, ToolKind
 from pouch.evolution.aggregate import UsageStat
 
 _DEFAULT_GRACE_DAYS = 14
 _DEFAULT_STALE_DAYS = 30
+
+# 사용 신호(usage.jsonl)가 실제로 찍히는 종류. 스킬·명령은 Skill 호출로,
+# 도구연결(mcp)은 mcp__* 호출로 찍힌다. 훅·규칙·에이전트는 신호가 안 찍힐 뿐
+# 일하고 있으므로(훅은 매 사건마다 실행) "안 쓰임"을 판별할 수 없다.
+USAGE_SIGNAL_KINDS = frozenset({ToolKind.SKILL, ToolKind.COMMAND, ToolKind.MCP})
+
+
+def has_usage_signal(entry: ToolEntry | None) -> bool:
+    """이 항목의 "안 쓰임"을 사용 기록으로 판별할 수 있는가.
+
+    신호 없는 종류(훅·규칙·에이전트)는 drop 후보에서 제외한다 — 경계(boundary)를
+    기억 위생에서 제외한 것과 같은 이유: 신호 없음 ≠ 안 쓰임. 카탈로그에 없는
+    항목(None)은 기존 동작을 유지해 후보로 남긴다(옛 데이터 보수 처리).
+    """
+    if entry is None:
+        return True
+    return entry.kind in USAGE_SIGNAL_KINDS
 
 # 정렬: 강한 후보(never-used) 먼저, 약한 후보(stale) 뒤.
 _REASON_ORDER = {"never-used": 0, "stale": 1}

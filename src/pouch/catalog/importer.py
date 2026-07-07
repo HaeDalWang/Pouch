@@ -20,6 +20,9 @@ from pouch.catalog.store import CatalogStore
 # AWS 리전 패턴 (us-east-1, eu-west-2, ap-southeast-1 …) — MCP 엔드포인트에서 추출.
 _AWS_REGION_RE = re.compile(r"\b([a-z]{2}-[a-z]+-\d+)\b")
 
+# 파일명에 못 쓰는(또는 위험한) 글자를 -로 접는다 — 훅 그룹 id("pre:bash:check")용.
+_ID_UNSAFE_RE = re.compile(r"[^a-zA-Z0-9_-]+")
+
 # plugin 안에서 문서형 도구가 사는 자리 — (하위디렉토리, glob, kind).
 # 스킬만 `<이름>/SKILL.md`로 한 겹 더 들어가고, 명령·에이전트는 평면 `*.md`.
 # ToolKind는 함수 정의부에서 import되지만 상수는 지연 참조를 피하려 아래서 채운다.
@@ -276,6 +279,58 @@ def import_mcp_servers(
     return entries
 
 
+def _hook_entry_id(event: str, group: dict) -> str:
+    """훅 그룹의 정체(id)를 정한다 — 그룹 id 우선, 없으면 사건+대상 합성.
+
+    합성이 안전한 이유: 훅은 사용 기록(usage.jsonl)에 이름이 찍히지 않아
+    이름을 런타임과 맞출 필요가 없다(스킬의 name 요구와 다른 이유). 대신
+    결정적이어야 재import가 같은 항목을 덮는다(중복 방지).
+    """
+    raw = group.get("id") or f"hook-{event}-{group.get('matcher', 'all')}"
+    return _ID_UNSAFE_RE.sub("-", raw).strip("-").lower()
+
+
+def import_hooks(
+    hooks_json_path: Path,
+    store: CatalogStore,
+    *,
+    source: str,
+    tags: tuple[str, ...] = (),
+    plugin_name: str | None = None,
+) -> list[ToolEntry]:
+    """hooks.json의 각 그룹을 linked 훅 항목으로 등록한다.
+
+    훅 = "이 사건이 나면 이 명령을 실행하라"는 배선. 몸(파일)이 아니라
+    조리법이라 mcp와 같은 결(linked + recipe)로 담는다. recipe에 사건·대상·
+    명령을 원문 그대로 들고 있어야 설치 때 사용자에게 원문을 보여줄 수 있다.
+
+    플러그인에서 온 훅(plugin_name 지정)은 surface=plugin — 플러그인 시스템이
+    이미 실행 중이라 pouch가 또 배선하면 같은 훅이 두 번 돈다.
+    """
+    data = json.loads(hooks_json_path.read_text(encoding="utf-8"))
+
+    entries: list[ToolEntry] = []
+    for event, groups in data.get("hooks", {}).items():
+        for group in groups:
+            recipe: dict = {"event": event, "hooks": group.get("hooks", [])}
+            if group.get("matcher"):
+                recipe["matcher"] = group["matcher"]
+            description = str(group.get("description", ""))
+            entry = ToolEntry.linked(
+                id=_hook_entry_id(event, group),
+                kind=ToolKind.HOOK,
+                source=source,
+                title=group.get("id") or f"{event} 훅",
+                description=description,
+                recipe=recipe,
+                tags=tags,
+                surface=SURFACE_PLUGIN if plugin_name else None,
+            )
+            store.save(entry)
+            entries.append(entry)
+    return entries
+
+
 def import_plugin(
     plugin_dir: Path,
     store: CatalogStore,
@@ -298,14 +353,30 @@ def import_plugin(
     entries: list[ToolEntry] = []
     skipped: list[SkippedSkill] = []
 
+    plugin_name = _plugin_name(plugin_dir)
+
     mcp_json = plugin_dir / ".mcp.json"
     if mcp_json.exists():
         entries.extend(
             import_mcp_servers(
                 mcp_json, store, source=source, tags=tags,
-                plugin_name=_plugin_name(plugin_dir),
+                plugin_name=plugin_name,
             )
         )
+
+    hooks_json = plugin_dir / "hooks" / "hooks.json"
+    if hooks_json.exists():
+        try:
+            entries.extend(
+                import_hooks(
+                    hooks_json, store, source=source, tags=tags,
+                    # 표면 관리 판단엔 "플러그인에서 왔다"는 사실만 필요하다.
+                    # 이름을 못 읽었어도 이중 배선 위험은 같으므로 관측만으로 둔다.
+                    plugin_name=plugin_name or plugin_dir.name,
+                )
+            )
+        except (json.JSONDecodeError, OSError) as exc:
+            skipped.append(SkippedSkill(path=str(hooks_json), reason=str(exc)))
 
     for subdir, pattern, kind in _DOC_SUBDIRS:
         doc_dir = plugin_dir / subdir

@@ -16,7 +16,15 @@ import json
 import shutil
 from pathlib import Path
 
-from pouch.catalog.model import Ownership, ToolEntry
+from pouch.catalog.model import Ownership, ToolEntry, ToolKind
+from pouch.hooks.settings import load_settings, with_recipe_removed, write_settings
+
+
+def unregister_hook(settings_path: Path, entry: ToolEntry) -> Path | None:
+    """훅 항목의 배선만 settings.json에서 걷어낸다(백업 동반). 나머지 보존."""
+    settings = load_settings(settings_path)
+    updated = with_recipe_removed(settings, entry.recipe or {})
+    return write_settings(settings_path, updated)
 
 
 def uninstall_skill_file(entry_id: str, *, skills_dir: Path) -> bool:
@@ -53,12 +61,24 @@ def unregister_mcp(config_path: Path, server_id: str) -> Path | None:
 
 
 def uninstall_entry(
-    entry: ToolEntry, *, skills_dir: Path, mcp_config_path: Path
+    entry: ToolEntry,
+    *,
+    skills_dir: Path,
+    mcp_config_path: Path,
+    settings_path: Path | None = None,
 ) -> None:
     """ownership에 따라 활성 표면에서 내린다. 카탈로그는 건드리지 않는다.
 
-    linked면 mcpServers에서, skill(owned/vendored)이면 SKILL.md 디렉토리에서 제거.
+    hook이면 settings.json 배선에서, linked(mcp)면 mcpServers에서,
+    skill(owned/vendored)이면 SKILL.md 디렉토리에서 제거.
     """
+    if entry.kind is ToolKind.HOOK:
+        from pouch import paths
+
+        target = settings_path or paths.claude_settings_path()
+        if target.exists():
+            unregister_hook(target, entry)
+        return
     if entry.ownership is Ownership.LINKED:
         if mcp_config_path.exists():
             unregister_mcp(mcp_config_path, entry.id)
