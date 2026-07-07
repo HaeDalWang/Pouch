@@ -43,12 +43,7 @@ boundary는 주입(에이전트가 알고 존중하게) + 제안까지만. PreTo
 
 > ~~upstream 증발 대비~~ — 2026-07-05 채택·완료 (ROADMAP Phase 4.6 후속 참조).
 > ~~기억 위생~~ — 2026-07-05 정책 락·구현 완료 (ROADMAP Phase 4.6 ④ 참조).
-
-### 1. 백업 / export
-
-- **걸린 약속**: 🌊 (쓸수록 쌓인다 = 쓸수록 잃을 게 커진다) + 🦦 선행 투자
-- `~/.pouch`가 단일 장애점. flat file 설계라 백업 *가능*하게는 돼 있는데 명령이 없다.
-- 방향 후보: `pouch export` / `~/.pouch`를 git으로. Phase 5 raft의 export/import와 같은 뿌리.
+> ~~백업/export~~ — 2026-07-07 v0 완료 (`pouch backup`/`restore`, 로컬 어댑터. ROADMAP Phase 4.6 후속 참조).
 
 ### 2. usage.jsonl 위생
 

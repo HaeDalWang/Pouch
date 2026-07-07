@@ -10,6 +10,8 @@ import typer
 from rich.console import Console
 
 from pouch import __version__
+from pouch.backup.commands import backup as backup_command
+from pouch.backup.commands import restore as restore_command
 from pouch.catalog.commands import app as catalog_app
 from pouch.evolution.commands import app as evolve_app
 from pouch.hooks.commands import app as hook_app
@@ -29,6 +31,8 @@ app.add_typer(catalog_app, name="catalog", help="📦 catalog — 주머니에 �
 app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리.")
 app.add_typer(evolve_app, name="evolve", help="🌊 evolve — 쓸수록 손에 맞게, 안 쓰는 건 정리.")
 app.command(name="init", help="🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다.")(init_command)
+app.command(name="backup", help="💾 전역 주머니를 아카이브로 백업한다.")(backup_command)
+app.command(name="restore", help="💾 백업 아카이브로 주머니를 되돌린다.")(restore_command)
 
 
 def _version_callback(value: bool) -> None:  # noqa: FBT001

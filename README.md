@@ -115,6 +115,16 @@ pouch evolve
 
 되돌리기: `pouch hook uninstall` 로 연결을 원상복구한다.
 
+주머니를 통째로 지키고 싶으면 (잃었을 때 되찾기):
+
+```bash
+pouch backup                  # ~/.pouch를 아카이브 하나로 백업 (기본: ~/pouch-backups/)
+pouch restore <아카이브 경로>  # 백업 시점으로 되돌림 — 덮기 전 현재 상태를 자동 스냅샷
+```
+
+> v0는 로컬 폴더 백업이다. 프로젝트별 `.pouch/`(민감정보)는 클라우드로 안 나가게
+> 전역 `~/.pouch`만 담는다. S3·구글드라이브 목적지는 같은 코어 위에 얹을 예정.
+
 기억을 직접 다루고 싶으면:
 
 ```bash
@@ -132,6 +142,7 @@ pouch memory recall <검색어>  # 키워드로 회상
 - [x] **도구 카탈로그** — 무엇을 담을 수 있는지의 레지스트리 (owned/vendored/linked) (Phase 3)
 - [x] **진화 엔진** — 사용을 추적해 안 쓰는 도구 정리 제안 `pouch evolve` (🌊 Phase 4)
 - [x] **체감 루프** — 카탈로그 CLI·상태 화면·attach 제안 (Phase 4.6 ①~③)
+- [x] **백업/복원** — `~/.pouch`를 잃었을 때 되찾기 `pouch backup`/`restore` (로컬 v0)
 - [ ] 기억 저마찰 축적 — 세션에서 배운 게 기억으로 흘러드는 경로 (Phase 4.6 ④, 정책 설계 먼저)
 - [ ] 태그 승격 — 실제 사용에서 진짜 프로필 학습 (Phase 4.5)
 - [ ] 주머니 공유 — 개인에서 팀으로 (🌊 raft, Phase 5)

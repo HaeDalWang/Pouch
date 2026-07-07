@@ -42,6 +42,16 @@ def state_path() -> Path:
     return global_root() / "state.json"
 
 
+def backup_dir() -> Path:
+    """로컬 백업 목적지(`~/pouch-backups/`). `POUCH_BACKUP_DIR`로 오버라이드 가능.
+
+    글로벌 루트(`~/.pouch`)의 *형제*라 백업 아카이브가 백업 대상 안에 들어가는
+    재귀를 구조적으로 피한다. 복원 직전 자동 스냅샷도 여기에 함께 쌓인다.
+    """
+    override = os.environ.get("POUCH_BACKUP_DIR")
+    return Path(override).expanduser() if override else Path.home() / "pouch-backups"
+
+
 def find_project_root(start: Path | None = None) -> Path | None:
     """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다."""
     start = (start or Path.cwd()).resolve()
