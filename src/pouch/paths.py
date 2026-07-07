@@ -34,6 +34,16 @@ def usage_log_path() -> Path:
     return global_root() / "usage.jsonl"
 
 
+def usage_summary_path() -> Path:
+    """접힌 사용 요약(`~/.pouch/usage-summary.json`).
+
+    오래된(경계 밖) 이벤트를 entry_id별 누적으로 접어 보존한다. 개별 시각은
+    흐려지되 누적 횟수(습관 신호)는 남는다. `compacted_through` 마커로 집계가
+    jsonl의 접힌 구간을 무시해 이중 계산을 막는다(멱등).
+    """
+    return global_root() / "usage-summary.json"
+
+
 def state_path() -> Path:
     """활성 표면 상태 사이드카(`~/.pouch/state.json`).
 

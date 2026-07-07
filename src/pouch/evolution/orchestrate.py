@@ -17,11 +17,12 @@ from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, alias_map
 from pouch.catalog.store import CatalogStore
 from pouch.catalog.uninstall import uninstall_entry
-from pouch.evolution.aggregate import aggregate_usage
 from pouch.evolution.attach import AttachCandidate, attach_candidates
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, drop_candidates
+from pouch.evolution.compaction import compact, full_stats
 from pouch.evolution.state import active_entries, mark_dropped
-from pouch.evolution.usage_log import read_events
+from pouch.evolution.summary import load_summary, save_summary
+from pouch.evolution.usage_log import read_events, rewrite_events
 
 
 def plan_evolution(
@@ -30,11 +31,40 @@ def plan_evolution(
     config: EvolveConfig,
     usage_path: Path | None = None,
     state_path: Path | None = None,
+    summary_path: Path | None = None,
 ) -> list[DropCandidate]:
-    """로그·상태를 읽어 drop 후보를 계산한다. 아무것도 내리지 않는다(제안만)."""
-    stats = aggregate_usage(read_events(log_path=usage_path))
+    """로그·상태를 읽어 drop 후보를 계산한다. 아무것도 내리지 않는다(제안만).
+
+    접힌 요약 + 최근 상세를 합쳐 전체 통계를 낸다 — 접기로 오래된 이벤트가
+    jsonl에서 빠져도 "썼던 도구"가 never-used로 오분류되지 않게 한다.
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    stats = full_stats(summary, events)
     active = active_entries(state_path=state_path)
     return drop_candidates(active, stats, now=now, config=config)
+
+
+def run_compaction(
+    *,
+    now: str,
+    after_days: int,
+    usage_path: Path | None = None,
+    summary_path: Path | None = None,
+) -> int:
+    """경계 밖 이벤트를 요약으로 접고 로그 공간을 회수한다. 접힌 줄 수 반환.
+
+    요약을 먼저 원자적으로 확정한 뒤 로그를 재작성한다 — 재작성이 실패해도
+    compacted_through가 잔재를 무시시켜 이중 계산이 없다(멱등).
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    new_summary, recent = compact(events, summary, now=now, after_days=after_days)
+    folded = len(events) - len(recent)
+    if folded > 0:
+        save_summary(new_summary, path=summary_path)
+        rewrite_events(recent, log_path=usage_path)
+    return folded
 
 
 def plan_attach(

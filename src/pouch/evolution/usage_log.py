@@ -9,6 +9,7 @@ ts는 주입한다 — 로그는 시계를 만들지 않는다(결정적 테스�
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,20 @@ def append_event(event: UsageEvent, *, log_path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(event.to_json() + "\n")
+
+
+def rewrite_events(events: list[UsageEvent], *, log_path: Path | None = None) -> None:
+    """로그를 주어진 이벤트로 통째로 다시 쓴다(원자적: tmp 작성 후 교체).
+
+    append-only의 예외 — 정상 로깅(hook)은 계속 덧붙이기만 하고, 접기(compaction)
+    라는 별도 정리 작업만 이 재작성을 쓴다. 실패해도 요약의 compacted_through가
+    집계 정확성을 지키므로(잔재 무시), 공간 회수는 best-effort로 안전하다.
+    """
+    path = log_path or paths.usage_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("".join(event.to_json() + "\n" for event in events), encoding="utf-8")
+    os.replace(tmp, path)  # 원자적 교체
 
 
 def read_events(*, log_path: Path | None = None) -> list[UsageEvent]:

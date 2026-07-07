@@ -24,11 +24,13 @@ from pouch import paths
 from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
 from pouch.evolution.candidates import DropCandidate, EvolveConfig
+from pouch.evolution.compaction import DEFAULT_COMPACT_AFTER_DAYS
 from pouch.evolution.orchestrate import (
     apply_drop,
     apply_reattach,
     plan_attach,
     plan_evolution,
+    run_compaction,
 )
 from pouch.evolution.tracker import record_usage
 from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
@@ -85,6 +87,12 @@ def evolve(
     store = CatalogStore()
     target_skills = skills_dir or paths.claude_skills_dir()
     target_mcp = mcp_config or paths.project_mcp_config_path()
+
+    # 위생 먼저: 오래된 사용 기록을 요약으로 접는다(무손실). 이후 계획이 접힌
+    # 요약을 반영한 정확한 통계 위에서 돈다.
+    folded = run_compaction(now=now, after_days=DEFAULT_COMPACT_AFTER_DAYS)
+    if folded:
+        console.print(f"🧾 오래된 사용 기록 {folded}줄을 요약으로 접었어요(습관은 보존).\n")
 
     memory_store = MemoryStore()
     drops = plan_evolution(now=now, config=EvolveConfig())

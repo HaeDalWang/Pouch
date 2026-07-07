@@ -44,12 +44,7 @@ boundary는 주입(에이전트가 알고 존중하게) + 제안까지만. PreTo
 > ~~upstream 증발 대비~~ — 2026-07-05 채택·완료 (ROADMAP Phase 4.6 후속 참조).
 > ~~기억 위생~~ — 2026-07-05 정책 락·구현 완료 (ROADMAP Phase 4.6 ④ 참조).
 > ~~백업/export~~ — 2026-07-07 v0 완료 (`pouch backup`/`restore`, 로컬 어댑터. ROADMAP Phase 4.6 후속 참조).
-
-### 2. usage.jsonl 위생
-
-- **걸린 약속**: 🌊 (진화 엔진의 연료 관리)
-- append-only 무한 성장 + 집계가 매번 전체 읽기. 몇 달 뒤 성능·저장 문제.
-- 방향 후보: rotation/compaction (오래된 이벤트를 집계 스냅샷으로 접기). 가장 기계적인 항목.
+> ~~usage.jsonl 위생~~ — 2026-07-07 완료 (접기/compaction, evolve 때 자동. ROADMAP Phase 4.6 후속 참조).
 
 ### 3. 커버리지 갭 — kind 6개 중 2개만 담긴다
 
