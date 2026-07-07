@@ -11,8 +11,10 @@ from rich.console import Console
 
 from pouch.hooks.settings import (
     is_installed,
+    is_usage_hook_installed,
     load_settings,
     with_hook_installed,
+    with_usage_hook_installed,
     write_settings,
 )
 from pouch.init.detect import Environment, detect_environment
@@ -74,7 +76,19 @@ def init(
         store.save(memory)
     console.print(f"[green]✓[/green] {len(memories)}개 기억을 담았습니다.")
 
+    _maybe_offer_set(answers, yes=yes)
     _maybe_link_hook(yes=yes)
+
+
+def _maybe_offer_set(answers: InitAnswers, *, yes: bool) -> None:
+    """역할·스택에 맞는 시작 세트가 있으면 통째로 제안한다(콜드 스타트 온보딩).
+
+    맞는 세트가 없으면 조용히 지나간다 — 세트는 문이지 관문이 아니다.
+    """
+    from pouch.catalog.recommend import interest_tokens
+    from pouch.sets.commands import offer_matching_set
+
+    offer_matching_set(tokens=interest_tokens(answers), yes=yes)
 
 
 def _print_detected(env: Environment) -> None:
@@ -85,14 +99,19 @@ def _print_detected(env: Environment) -> None:
 
 
 def _maybe_link_hook(yes: bool) -> None:
-    """미연결 상태면 에이전트 연결(hook)을 제안/수행한다."""
+    """미연결 상태면 에이전트 연결(hook)을 제안/수행한다.
+
+    `pouch hook install`과 같은 두 배선을 건다: 기억 주입(세션 시작) +
+    사용 기록(도구 쓸 때). 사용 기록이 빠지면 진화가 볼 데이터가 안 쌓여
+    "쓸수록 진화한다"가 시작조차 못 한다 — init만 돌린 사용자에게 특히 중요.
+    """
     path = paths.claude_settings_path()
     settings = load_settings(path)
-    if is_installed(settings):
+    if is_installed(settings) and is_usage_hook_installed(settings):
         console.print("[green]✓[/green] 에이전트에 이미 연결돼 있습니다.")
         return
     if not yes and not typer.confirm("지금 에이전트에 연결할까요?", default=True):
         console.print("   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다.")
         return
-    write_settings(path, with_hook_installed(settings))
+    write_settings(path, with_usage_hook_installed(with_hook_installed(settings)))
     console.print(f"[green]✓[/green] 에이전트 연결 완료 → {path}")

@@ -26,6 +26,15 @@ def catalog_dir() -> Path:
     return global_root() / "catalog"
 
 
+def sets_dir() -> Path:
+    """사용자 시작 세트 디렉토리(`~/.pouch/sets/`).
+
+    내장 세트와 같은 형식의 JSON을 여기 두면 함께 읽힌다(같은 이름은 사용자 우선).
+    나중에 세트 공유(raft)가 이 형식을 그대로 주고받는다.
+    """
+    return global_root() / "sets"
+
+
 def usage_log_path() -> Path:
     """사용 이벤트 사이드카 로그(`~/.pouch/usage.jsonl`).
 
