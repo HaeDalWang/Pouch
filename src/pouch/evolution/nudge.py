@@ -16,6 +16,61 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+
+_DEFAULT_BASE_INTERVAL_DAYS = 3  # 문턱 넘은 뒤 같은 쪽지 최소 간격
+_DEFAULT_MAX_INTERVAL_DAYS = 30  # 물러남이 수렴하는 바닥 빈도(멈춤 아님)
+
+
+@dataclass(frozen=True)
+class NudgePolicy:
+    """쪽지 간격 정책 — 매직넘버 회피, 기본값 있는 config.
+
+    base_interval_days: 한 번 심은 뒤 다음까지 최소 침묵(간격 방어).
+    max_interval_days: 물러남이 수렴하는 상한 — 무시가 쌓여도 완전히 멈추진
+        않고 아주 드물게만 뜬다(담을 게 의미 있게 더 쌓이면 다시 심는 건 별개).
+    """
+
+    base_interval_days: int = _DEFAULT_BASE_INTERVAL_DAYS
+    max_interval_days: int = _DEFAULT_MAX_INTERVAL_DAYS
+
+
+def backoff_days(shown_count: int, policy: NudgePolicy) -> int:
+    """지금까지 shown_count번 심었을 때 다음 쪽지까지의 간격(일).
+
+    물러남 불변식(키우기 금지): shown_count가 커질수록 간격은 커지기만 한다
+    (단조 비감소). 지수 backoff(심을수록 배로 뜸해짐)에 상한을 씌운다 — 무시가
+    쌓이면 pouch는 점점 더 조용해지되, 상한에서 멈춰 바닥 빈도로 수렴한다.
+    """
+    if shown_count <= 0:
+        return policy.base_interval_days
+    raw = policy.base_interval_days * (2 ** (shown_count - 1))
+    return min(raw, policy.max_interval_days)
+
+
+def should_nudge(
+    *,
+    last_shown: str | None,
+    shown_count: int,
+    now: str,
+    policy: NudgePolicy,
+) -> bool:
+    """지금 이 쪽지를 심어도 되는가 — 간격·물러남을 장부 위에서 판정한다.
+
+    심은 적 없으면(last_shown None) 보인다(문턱은 호출부가 이미 확인). 심은
+    적 있으면 backoff 간격이 지났을 때만 다시 보인다 — 많이 무시할수록(count
+    큼) 더 오래 침묵한다. 시계는 주입한다(결정적).
+    """
+    if last_shown is None:
+        return True
+    elapsed = _days_between(last_shown, now)
+    return elapsed >= backoff_days(shown_count, policy)
+
+
+def _days_between(earlier: str, later: str) -> float:
+    """ISO8601 두 시각 사이 일수. earlier가 미래면 음수."""
+    delta = datetime.fromisoformat(later) - datetime.fromisoformat(earlier)
+    return delta.total_seconds() / 86400
 
 
 @dataclass(frozen=True)
@@ -64,3 +119,26 @@ def render_note(summary: NudgeSummary) -> str:
         f"🦦 정리할 게 쌓였어요 — {listing}.\n"
         "하던 일 끝나고 '정리하자' 하시면 목록부터 보여드릴게요."
     )
+
+
+def plan_nudge(
+    summary: NudgeSummary,
+    *,
+    last_shown: str | None,
+    shown_count: int,
+    now: str,
+    policy: NudgePolicy,
+) -> str:
+    """문턱·간격·물러남을 모두 통과하면 쪽지 텍스트, 아니면 ""(침묵). 순수 함수.
+
+    잔소리 방어 4개가 한 곳에 모인다: 문턱(summary.total==0이면 침묵)·간격/묵히기/
+    물러남(should_nudge가 backoff로 판정)·기본은 침묵(둘 중 하나라도 미달이면 "").
+    이걸 통과해 텍스트가 나오면, 호출부(CLI 경계)가 장부에 record_shown 한다.
+    """
+    if summary.total == 0:  # 문턱 미달 — 쌓인 게 없음
+        return ""
+    if not should_nudge(
+        last_shown=last_shown, shown_count=shown_count, now=now, policy=policy
+    ):
+        return ""  # 간격·물러남 미달 — 안 조름
+    return render_note(summary)

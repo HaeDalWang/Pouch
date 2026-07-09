@@ -177,10 +177,19 @@ def promote(
 def context() -> None:
     """SessionStart hook용: 세션 통로를 평문으로 출력한다(에이전트 주입용).
 
-    고정 구역(boundary+기억 인덱스)만 나간다 — 쪽지 구역(먼저 내미는 제안)은
-    조각 3에서 note_zone을 얹으면 이 통로 아래에 조건부로 붙는다. 지금은
-    note_zone 없이 지나가므로 동작은 기존과 동일하다(구역만 갈렸다).
+    고정 구역(boundary+기억 인덱스) 위, 쪽지 구역(먼저 내미는 제안) 아래.
+    쪽지는 격리된 note_zone에서 조립되므로, 조립이 터져도 고정 구역은 그대로
+    나간다(render_session_context의 비대칭 격리). 시계는 이 경계에서만 읽는다.
     """
-    text = render_session_context(_store().list())
+    from datetime import datetime
+
+    from pouch.evolution.session_nudge import build_session_note, gather_nudge_summary
+
+    now = datetime.now().isoformat(timespec="seconds")
+
+    def _note_zone() -> str:
+        return build_session_note(gather_nudge_summary(now=now), now=now)
+
+    text = render_session_context(_store().list(), note_zone=_note_zone)
     if text:
         typer.echo(text, nl=False)
