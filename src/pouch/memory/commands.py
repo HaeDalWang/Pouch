@@ -7,7 +7,7 @@ from datetime import date
 import typer
 from rich.console import Console
 
-from pouch.memory.context import render_context
+from pouch.memory.context import render_session_context
 from pouch.memory.liveness import check_reference_alive
 from pouch.memory.model import (
     Direction,
@@ -175,7 +175,12 @@ def promote(
 
 @app.command("context")
 def context() -> None:
-    """SessionStart hook용: 기억 인덱스를 평문으로 출력한다(에이전트 주입용)."""
-    text = render_context(_store().list())
+    """SessionStart hook용: 세션 통로를 평문으로 출력한다(에이전트 주입용).
+
+    고정 구역(boundary+기억 인덱스)만 나간다 — 쪽지 구역(먼저 내미는 제안)은
+    조각 3에서 note_zone을 얹으면 이 통로 아래에 조건부로 붙는다. 지금은
+    note_zone 없이 지나가므로 동작은 기존과 동일하다(구역만 갈렸다).
+    """
+    text = render_session_context(_store().list())
     if text:
         typer.echo(text, nl=False)

@@ -10,9 +10,43 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
+
+
+def render_session_context(
+    entries: Iterable[MemoryEntry],
+    *,
+    note_zone: Callable[[], str] | None = None,
+) -> str:
+    """SessionStart 통로 전체 — 고정 구역(반드시 읽음) + 쪽지 구역(무시 가능).
+
+    가르는 축은 churn이 아니라 "반드시 읽어야 함 vs 무시돼도 됨". boundary·기억
+    인덱스는 고정 구역(위), 먼저 내미는 제안 쪽지는 쪽지 구역(아래, 조건부).
+
+    격리 불변식 — 한 구현으로 ①+③ 동시 만족:
+      먼저 고정 구역을 완전히 렌더·확정한다(entries 소비가 여기서 일어나므로,
+      고정 구역이 터지면 쪽지 로직에 닿기도 전에 시끄럽게 실패한다 — 가드레일
+      없는 제안-only 컨텍스트가 새어나가는 것을 막는 비대칭 ③b).
+      그다음 쪽지를 격리된 try 안에서 시도한다(터져도 고정 구역은 이미 나갔으니
+      생존 ③a, 위로도 못 옴 ①). note_zone이 None이거나 빈 내용이면 쪽지 구역은
+      아예 안 그려진다(문턱 미달 = 글자 0, 구분선조차 없음 ②).
+    """
+    fixed = render_context(entries)  # 고정 구역 먼저 — 실패는 여기서 전파(③b)
+    if note_zone is None:
+        return fixed
+
+    try:
+        note = note_zone()
+    except Exception:  # noqa: BLE001 — 쪽지 실패는 조용히 흡수(③a), 고정 구역은 이미 확정
+        return fixed
+
+    if not note.strip():  # 문턱 미달 → 쪽지 구역 자체를 안 그린다(②)
+        return fixed
+
+    # 쪽지는 항상 고정 구역 아래(①). 구분선은 내용이 있을 때만 등장.
+    return fixed.rstrip() + "\n\n---\n\n" + note.strip() + "\n"
 
 
 def render_context(entries: Iterable[MemoryEntry]) -> str:
