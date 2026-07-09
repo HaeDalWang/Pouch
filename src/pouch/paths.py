@@ -61,6 +61,16 @@ def state_path() -> Path:
     return global_root() / "state.json"
 
 
+def proposals_ledger_path() -> Path:
+    """제안 장부 사이드카(`~/.pouch/proposals.json`).
+
+    proposal_id → last_shown_at·shown_count. 먼저 내미는 제안의 잔소리 방어
+    (간격·묵히기)가 요구하는 작은 상태. usage.jsonl·state.json과 같은 정신 —
+    카탈로그와 분리된, 버려도 되는 라이프사이클 레이어(지우면 다시 침묵부터 시작).
+    """
+    return global_root() / "proposals.json"
+
+
 def backup_dir() -> Path:
     """로컬 백업 목적지(`~/pouch-backups/`). `POUCH_BACKUP_DIR`로 오버라이드 가능.
 
