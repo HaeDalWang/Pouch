@@ -33,6 +33,7 @@ from pouch.evolution.orchestrate import (
     plan_evolution,
     run_compaction,
 )
+from pouch.evolution.preview import preview_attach, preview_drop
 from pouch.evolution.tracker import record_usage
 from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
 from pouch.memory.hygiene import HygieneCandidate
@@ -150,8 +151,13 @@ def _propose_drops(
             skills_dir=skills_dir, mcp_config_path=mcp_config_path,
         )
     ]
-    console.print(f"\n[green]✓[/green] {len(dropped)}개 내렸습니다: {', '.join(dropped)}")
-    console.print("   다시 쓰고 싶으면 재설치 한 번이면 됩니다(개인화는 그대로 살아있어요).")
+    console.print(f"\n[green]✓[/green] {len(dropped)}개 내렸습니다:")
+    # 되돌리는 정확한 한 줄은 preview(단일 출처)에서 나온다 — 산문으로 짓지 않는다.
+    for cand in candidates:
+        if cand.entry_id not in dropped:
+            continue
+        undo = preview_drop(cand).undo
+        console.print(f"   • [cyan]{cand.entry_id}[/cyan] — 되돌리기: [cyan]{undo}[/cyan]")
 
     for entry_id in dropped:
         _gate_boundaries_for_dropped(entry_id)
@@ -213,18 +219,22 @@ def _propose_attaches(
         console.print("그대로 두었습니다.")
         return
 
-    restored: list[str] = []
+    restored_cands: list[AttachCandidate] = []
     for cand in reattaches:
         try:
             if apply_reattach(
                 cand.entry_id, store=store,
                 skills_dir=skills_dir, mcp_config_path=mcp_config_path,
             ):
-                restored.append(cand.entry_id)
+                restored_cands.append(cand)
         except (ValueError, FileNotFoundError) as exc:
             console.print(f"  [red]✗[/red] {cand.entry_id}: {exc}")
-    if restored:
-        console.print(f"\n[green]✓[/green] {len(restored)}개 다시 올렸습니다: {', '.join(restored)}")
+    if restored_cands:
+        console.print(f"\n[green]✓[/green] {len(restored_cands)}개 다시 올렸습니다:")
+        # 되돌리는 한 줄은 preview(단일 출처)에서 — 산문으로 짓지 않는다.
+        for cand in restored_cands:
+            undo = preview_attach(cand).undo
+            console.print(f"   • [cyan]{cand.entry_id}[/cyan] — 되돌리기: [cyan]{undo}[/cyan]")
 
 
 def _propose_memory_pending(
