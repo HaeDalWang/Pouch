@@ -178,6 +178,64 @@ def test_contract5_evolve_shows_pending_and_promotes_on_yes(tmp_path: Path, monk
     assert stored is not None and stored.state.value == "indexed"
 
 
+def _install_drop_candidate(tmp_path: Path) -> tuple[Path, Path]:
+    """never-used + 유예 지난 vendored 도구를 심는다(drop 후보). skills·mcp 경로 반환."""
+    from pouch.catalog.install import install_entry
+    from pouch.catalog.model import ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.state import record_installed
+
+    upstream = tmp_path / "up" / "aws-swift" / "SKILL.md"
+    upstream.parent.mkdir(parents=True)
+    upstream.write_text("---\nname: aws-swift\ndescription: d\n---\n\n본문", encoding="utf-8")
+    entry = ToolEntry.vendored(
+        id="aws-swift", kind=ToolKind.SKILL, source="aws", title="aws-swift",
+        description="d", upstream=str(upstream), synced_at="2026-01-01",
+    )
+    CatalogStore().save(entry)
+    skills_dir = tmp_path / "skills"
+    mcp_config = tmp_path / ".mcp.json"
+    install_entry(entry, skills_dir=skills_dir, mcp_config_path=mcp_config)
+    record_installed("aws-swift", now="2026-01-01T00:00:00")  # 오래 전, 미사용
+    return skills_dir, mcp_config
+
+
+def test_contract7_dry_run_shows_undo_but_changes_nothing(tmp_path: Path, monkeypatch) -> None:
+    # 조각 6: '정리하자' 다리 = 읽기전용 목록. preview의 되돌림을 보여주되 실행 안 함.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    skills_dir, mcp_config = _install_drop_candidate(tmp_path)
+
+    # 입력을 주지 않는다 — dry-run은 물음(confirm) 없이도 끝나야 한다(비대화형 안전)
+    result = runner.invoke(
+        app,
+        ["evolve", "--dry-run", "--skills-dir", str(skills_dir), "--mcp-config", str(mcp_config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "aws-swift" in result.output
+    # 되돌리는 정확한 명령(preview 단일 출처)이 목록에 함께 나온다
+    assert "pouch catalog install aws-swift" in result.output
+    # ★ 아무것도 안 내려감 — 표면 그대로(볼게, 해 아님)
+    assert (skills_dir / "aws-swift" / "SKILL.md").exists()
+
+
+def test_contract7b_dry_run_does_not_compact_log(tmp_path: Path, monkeypatch) -> None:
+    # dry-run은 읽기전용 — 오래된 사용 로그도 접지 않는다(mutation 금지)
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from pouch.evolution.usage_log import UsageEvent, append_event, read_events
+
+    log = tmp_path / "usage.jsonl"
+    # compaction 경계(180일)보다 훨씬 오래된 이벤트 — 평소 evolve면 접힐 것
+    append_event(UsageEvent(entry_id="old-tool", ts="2020-01-01T00:00:00"), log_path=log)
+
+    result = runner.invoke(app, ["evolve", "--dry-run"])
+
+    assert result.exit_code == 0
+    # 로그가 그대로 남아있다(접히지 않음)
+    events = read_events(log_path=log)
+    assert len(events) == 1 and events[0].entry_id == "old-tool"
+
+
 def test_contract6_evolve_shows_hygiene_and_demotes_on_yes(tmp_path: Path, monkeypatch) -> None:
     # 기억의 나가는 문 — 죽은 reference를 evolve가 강등 제안하고 확인 시 내린다.
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))

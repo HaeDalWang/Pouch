@@ -74,6 +74,9 @@ def log() -> None:
 def evolve(
     ctx: typer.Context,
     yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 제안을 적용."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="목록·이유·되돌림만 보여주고 아무것도 안 함(볼게, 해 아님)."
+    ),
     skills_dir: Path = typer.Option(
         None, "--skills-dir", help="스킬 설치 위치(기본: Claude skills)."
     ),
@@ -81,7 +84,12 @@ def evolve(
         None, "--mcp-config", help=".mcp.json 위치(기본: 현재 프로젝트)."
     ),
 ) -> None:
-    """안 쓰는 건 내리고, 다시 쓰는 건 올리자고 제안한다(제안만, 자동 없음)."""
+    """안 쓰는 건 내리고, 다시 쓰는 건 올리자고 제안한다(제안만, 자동 없음).
+
+    --dry-run은 '정리하자' 다리다 — 에이전트가 사용자에게 목록·이유·되돌림을
+    보여줄 때 쓴다(읽기전용, 물음도 실행도 없음). 사용자가 '해'라고 하면 그때
+    에이전트가 --yes로 다시 부른다. 두 단계 동의가 CLI로 데려다주는 경로.
+    """
     if ctx.invoked_subcommand is not None:
         return  # `evolve log` 등 서브커맨드는 그쪽이 처리한다.
 
@@ -91,10 +99,11 @@ def evolve(
     target_mcp = mcp_config or paths.project_mcp_config_path()
 
     # 위생 먼저: 오래된 사용 기록을 요약으로 접는다(무손실). 이후 계획이 접힌
-    # 요약을 반영한 정확한 통계 위에서 돈다.
-    folded = run_compaction(now=now, after_days=DEFAULT_COMPACT_AFTER_DAYS)
-    if folded:
-        console.print(f"🧾 오래된 사용 기록 {folded}줄을 요약으로 접었어요(습관은 보존).\n")
+    # 요약을 반영한 정확한 통계 위에서 돈다. dry-run은 읽기전용이라 건너뛴다.
+    if not dry_run:
+        folded = run_compaction(now=now, after_days=DEFAULT_COMPACT_AFTER_DAYS)
+        if folded:
+            console.print(f"🧾 오래된 사용 기록 {folded}줄을 요약으로 접었어요(습관은 보존).\n")
 
     memory_store = MemoryStore()
     # 신호 없는 종류(훅·규칙·에이전트)는 "안 쓰임"을 판별할 수 없어 후보에서 뺀다.
@@ -107,6 +116,10 @@ def evolve(
     hygiene = plan_memory_hygiene(memory_store, now=datetime.now().date())
     if not drops and not attaches and not pending and not hygiene:
         console.print("🌊 오르내릴 것이 없습니다. 주머니가 손에 맞게 유지되고 있어요.")
+        return
+
+    if dry_run:
+        _preview_plan(drops, attaches, pending, hygiene)
         return
 
     if drops:
@@ -123,6 +136,48 @@ def evolve(
         _propose_memory_pending(pending, yes=yes, store=memory_store)
     if hygiene:
         _propose_memory_hygiene(hygiene, yes=yes, store=memory_store)
+
+
+def _preview_plan(
+    drops: list[DropCandidate],
+    attaches: list[AttachCandidate],
+    pending: list[MemoryEntry],
+    hygiene: list[HygieneCandidate],
+) -> None:
+    """읽기전용 목록 — 항목마다 효과+되돌림(preview 단일 출처). 실행·물음 없음.
+
+    '정리하자'에 에이전트가 이걸 사용자에게 보여준다. 되돌림 한 줄까지 여기서
+    나오므로 에이전트가 결과를 지어낼 수 없다(조각 2 자물쇠의 회수). 실행하려면
+    사용자 동의를 받아 [cyan]pouch evolve --yes[/cyan]로 다시 부른다.
+    """
+    console.print("🌊 [bold]정리 예고[/bold] — 아래는 제안일 뿐, 아직 아무것도 하지 않았습니다.\n")
+
+    for cand in drops:
+        pv = preview_drop(cand)
+        reason = _REASON_LABEL.get(cand.reason, cand.reason)
+        console.print(f"  ▽ [cyan]{pv.target}[/cyan] 내리기 — {reason}")
+        console.print(f"     {pv.effect}")
+        console.print(f"     되돌리기: [cyan]{pv.undo}[/cyan]")
+
+    for cand in attaches:
+        pv = preview_attach(cand)
+        arrow = {"reattach": "△", "adopt": "＋", "observe": "◦"}.get(pv.action, "•")
+        console.print(f"  {arrow} [cyan]{pv.target}[/cyan] {pv.action} — 최근 {cand.count}회 씀")
+        console.print(f"     {pv.effect}")
+        if pv.undo:
+            console.print(f"     되돌리기: [cyan]{pv.undo}[/cyan]")
+
+    for entry in pending:
+        console.print(f"  ＋ [cyan]{entry.name}[/cyan] 기억 확인 — {entry.description}")
+        console.print("     인덱스에 올립니다(pending → indexed).")
+    for cand in hygiene:
+        console.print(f"  ▽ [cyan]{cand.name}[/cyan] 기억 정리 — {cand.detail}")
+        console.print("     인덱스에서 내립니다(파일은 남음, recall로 되찾음).")
+
+    console.print(
+        "\n실행하려면: [cyan]pouch evolve --yes[/cyan] "
+        "(또는 대화형으로 [cyan]pouch evolve[/cyan])."
+    )
 
 
 def _propose_drops(
