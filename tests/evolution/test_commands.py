@@ -219,6 +219,50 @@ def test_contract7_dry_run_shows_undo_but_changes_nothing(tmp_path: Path, monkey
     assert (skills_dir / "aws-swift" / "SKILL.md").exists()
 
 
+def test_contract7c_dry_run_shows_similar_for_repeated_anchor(tmp_path: Path, monkeypatch) -> None:
+    # 조각 3('이거 써봐'): reattach 앵커가 뜰 때 같은 태그의 비슷한 후보도 함께.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from datetime import datetime, timedelta
+
+    from pouch.catalog.install import install_entry
+    from pouch.catalog.model import Overlay, ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.orchestrate import apply_drop
+    from pouch.evolution.usage_log import UsageEvent, append_event
+
+    store = CatalogStore()
+    skills_dir = tmp_path / "skills"
+    mcp_config = tmp_path / ".mcp.json"
+
+    # 앵커(terraform)와 비슷한 후보(pulumi)를 같은 태그로 카탈로그에 담는다
+    for tool_id in ("terraform", "pulumi"):
+        up = tmp_path / "up" / tool_id / "SKILL.md"
+        up.parent.mkdir(parents=True)
+        up.write_text(f"---\nname: {tool_id}\ndescription: d\n---\n\n본문", encoding="utf-8")
+        entry = ToolEntry.vendored(
+            id=tool_id, kind=ToolKind.SKILL, source="s", title=tool_id,
+            description=f"{tool_id} 설명", upstream=str(up), synced_at="2026-01-01",
+            overlay=Overlay(tags=("iac", "cloud")),
+        )
+        store.save(entry)
+
+    # terraform만 설치했다 내리고 최근 다시 씀 → reattach 앵커. pulumi는 카탈로그만(비슷).
+    install_entry(store.get("terraform"), skills_dir=skills_dir, mcp_config_path=mcp_config)
+    apply_drop("terraform", store=store, skills_dir=skills_dir, mcp_config_path=mcp_config)
+    fresh = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
+
+    result = runner.invoke(
+        app,
+        ["evolve", "--dry-run", "--skills-dir", str(skills_dir), "--mcp-config", str(mcp_config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    # 앵커 곁에 비슷한 후보(pulumi)가 함께 뜬다 — "이거 써봐"
+    assert "pulumi" in result.output
+    assert "비슷" in result.output
+
+
 def test_contract7b_dry_run_does_not_compact_log(tmp_path: Path, monkeypatch) -> None:
     # dry-run은 읽기전용 — 오래된 사용 로그도 접지 않는다(mutation 금지)
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))

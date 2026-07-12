@@ -34,6 +34,8 @@ from pouch.evolution.orchestrate import (
     run_compaction,
 )
 from pouch.evolution.preview import preview_attach, preview_drop
+from pouch.evolution.similar import plan_try_this
+from pouch.evolution.state import active_entries
 from pouch.evolution.tracker import record_usage
 from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
 from pouch.memory.hygiene import HygieneCandidate
@@ -118,8 +120,10 @@ def evolve(
         console.print("🌊 오르내릴 것이 없습니다. 주머니가 손에 맞게 유지되고 있어요.")
         return
 
+    active_ids = set(active_entries())  # '이거 써봐'가 이미 켠 것을 다시 안 권하게
+
     if dry_run:
-        _preview_plan(drops, attaches, pending, hygiene)
+        _preview_plan(drops, attaches, pending, hygiene, store=store, active_ids=active_ids)
         return
 
     if drops:
@@ -131,6 +135,7 @@ def evolve(
         _propose_attaches(
             attaches, yes=yes, store=store,
             skills_dir=target_skills, mcp_config_path=target_mcp,
+            active_ids=active_ids,
         )
     if pending:
         _propose_memory_pending(pending, yes=yes, store=memory_store)
@@ -143,6 +148,9 @@ def _preview_plan(
     attaches: list[AttachCandidate],
     pending: list[MemoryEntry],
     hygiene: list[HygieneCandidate],
+    *,
+    store: CatalogStore,
+    active_ids: set[str],
 ) -> None:
     """읽기전용 목록 — 항목마다 효과+되돌림(preview 단일 출처). 실행·물음 없음.
 
@@ -174,10 +182,38 @@ def _preview_plan(
         console.print(f"  ▽ [cyan]{cand.name}[/cyan] 기억 정리 — {cand.detail}")
         console.print("     인덱스에서 내립니다(파일은 남음, recall로 되찾음).")
 
+    # '이거 써봐' — 반복 앵커 곁에 비슷한 후보도(읽기전용이라 여기서도 안전).
+    _render_try_this(attaches, store=store, active_ids=active_ids)
+
     console.print(
         "\n실행하려면: [cyan]pouch evolve --yes[/cyan] "
         "(또는 대화형으로 [cyan]pouch evolve[/cyan])."
     )
+
+
+def _render_try_this(
+    attaches: list[AttachCandidate], *, store: CatalogStore, active_ids: set[str]
+) -> None:
+    """반복 앵커 곁에 '비슷한 후보도 이거'를 붙여 보여준다('이거 써봐' 조각 3).
+
+    앵커 = 반복 신호(reattach·adopt)의 도구 — 새 발견 로직 아님, 있는 신호 재사용.
+    비슷함은 태그 겹침으로만(지어내기 없음), 왜 비슷한지(겹친 태그)를 함께 보여준다.
+    붙일 게 없으면(날것 예외·겹침 0) 조용히 아무것도 안 그린다(소음 0).
+    """
+    anchor_ids = [c.entry_id for c in attaches if c.kind in ("reattach", "adopt")]
+    plans = plan_try_this(anchor_ids, list(store.list()), active_ids=active_ids)
+    if not plans:
+        return
+
+    console.print("\n💡 [bold]이거 써봐[/bold] (자주 쓰시는 것과 비슷한 것들)\n")
+    for plan in plans:
+        console.print(f"  [dim]{plan.anchor_id}와 비슷:[/dim]")
+        for cand in plan.similar:
+            shared = ", ".join(sorted(cand.shared_tags))
+            console.print(
+                f"    • [cyan]{cand.entry.id}[/cyan] — {cand.entry.description}"
+                f" [dim](비슷한 점: {shared})[/dim]"
+            )
 
 
 def _propose_drops(
@@ -246,6 +282,7 @@ def _propose_attaches(
     store: CatalogStore,
     skills_dir: Path,
     mcp_config_path: Path,
+    active_ids: set[str],
 ) -> None:
     """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt·observe는 안내만."""
     reattaches = [c for c in candidates if c.kind == "reattach"]
@@ -267,6 +304,9 @@ def _propose_attaches(
             f"  • [cyan]{cand.entry_id}[/cyan] — 플러그인이 관리 중, 최근 {cand.count}회 씀"
             " [dim](관측만)[/dim]"
         )
+
+    # '이거 써봐' — 반복 앵커 곁에 비슷한 후보도(안내만, 실행 아님).
+    _render_try_this(candidates, store=store, active_ids=active_ids)
 
     if not reattaches:
         return

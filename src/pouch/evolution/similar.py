@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pouch.evolution.pool import PoolEntry
+from pouch.catalog.model import ToolEntry
+from pouch.evolution.pool import PoolEntry, build_pool
 
 _DEFAULT_LIMIT = 5
+_DEFAULT_SIMILAR_PER_ANCHOR = 3
 
 
 @dataclass(frozen=True)
@@ -65,3 +67,34 @@ def _tags_of(entry_id: str, pool: list[PoolEntry]) -> frozenset[str]:
         if entry.id == entry_id:
             return entry.tags
     return frozenset()
+
+
+@dataclass(frozen=True)
+class TryThis:
+    """한 반복 앵커 + 그와 비슷한 후보들(비었으면 이 앵커는 조립에서 빠진다)."""
+
+    anchor_id: str
+    similar: tuple[SimilarCandidate, ...]
+
+
+def plan_try_this(
+    anchor_ids: list[str],
+    entries: list[ToolEntry],
+    *,
+    active_ids: set[str],
+    limit: int = _DEFAULT_SIMILAR_PER_ANCHOR,
+) -> list[TryThis]:
+    """반복 앵커마다 풀에서 비슷한 후보를 붙인다(순수 조립, 새 파이프 없음).
+
+    앵커를 종류로 특별 취급하지 않는다 — reattach 앵커는 풀 안이라 비슷한 게
+    붙고, adopt 앵커는 풀 밖이라 find_similar가 []를 내 조용히 빠진다(하드코딩
+    없이 날것 예외가 처리). 비슷한 게 없는 앵커도 소음 0으로 빠진다.
+    """
+    pool = build_pool(entries)
+
+    plans: list[TryThis] = []
+    for anchor_id in anchor_ids:
+        similar = find_similar(anchor_id, pool, active_ids=active_ids, limit=limit)
+        if similar:  # 비었으면(날것 예외·겹침 0) 조용히 뺀다
+            plans.append(TryThis(anchor_id=anchor_id, similar=tuple(similar)))
+    return plans
