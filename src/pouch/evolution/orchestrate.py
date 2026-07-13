@@ -17,6 +17,8 @@ from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, alias_map
 from pouch.catalog.store import CatalogStore
 from pouch.catalog.uninstall import uninstall_entry
+from pouch.evolution.advice import Advice, plan_advice
+from pouch.evolution.aggregate import canonicalize_stats
 from pouch.evolution.attach import AttachCandidate, attach_candidates
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, drop_candidates
 from pouch.evolution.compaction import compact, full_stats
@@ -86,6 +88,28 @@ def plan_attach(
         alias_map=alias_map(entries),
         plugin_surfaced={e.id for e in entries if e.surface == SURFACE_PLUGIN},
     )
+
+
+def plan_plugin_advice(
+    *,
+    now: str,
+    store: CatalogStore,
+    config: EvolveConfig,
+    usage_path: Path | None = None,
+    summary_path: Path | None = None,
+) -> list[Advice]:
+    """plugin 도구의 관측 사용을 진화 조언으로 계산한다(제안만, 아무것도 안 바꿈).
+
+    (A→B) 조언 경로. 통계는 canonicalize를 거친다 — 런타임 별칭(plugin_<플러그인>_
+    <서버>)을 카탈로그 정식 id로 접어야 조언이 항목에 닿는다. alias가 안 걸린 도구
+    (예: skill로 잘못 들어온 exa)는 여기서 조언에 안 잡힌다 — 그건 import 경로의
+    문제(조각 3)라 이 조언 로직으로는 못 고친다. (1)/(3) 분리가 이 canonicalize에서 갈린다.
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    entries = list(store.list())
+    stats = canonicalize_stats(full_stats(summary, events), alias_map(entries))
+    return plan_advice(entries, stats, now=now, stale_days=config.stale_days)
 
 
 def apply_drop(

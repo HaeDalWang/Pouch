@@ -26,11 +26,13 @@ from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, has_usage_signal
 from pouch.evolution.compaction import DEFAULT_COMPACT_AFTER_DAYS
+from pouch.evolution.advice import Advice
 from pouch.evolution.orchestrate import (
     apply_drop,
     apply_reattach,
     plan_attach,
     plan_evolution,
+    plan_plugin_advice,
     run_compaction,
 )
 from pouch.evolution.preview import preview_attach, preview_drop
@@ -114,16 +116,20 @@ def evolve(
         if has_usage_signal(store.get(d.entry_id))
     ]
     attaches = plan_attach(now=now, store=store)
+    # (A→B) plugin 관측 사용을 조언으로 — pouch가 안 바꾸고 소유자에게 안내만.
+    advice = plan_plugin_advice(now=now, store=store, config=EvolveConfig())
     pending = plan_memory_pending(memory_store)
     hygiene = plan_memory_hygiene(memory_store, now=datetime.now().date())
-    if not drops and not attaches and not pending and not hygiene:
+    if not drops and not attaches and not advice and not pending and not hygiene:
         console.print("🌊 오르내릴 것이 없습니다. 주머니가 손에 맞게 유지되고 있어요.")
         return
 
     active_ids = set(active_entries())  # '이거 써봐'가 이미 켠 것을 다시 안 권하게
 
     if dry_run:
-        _preview_plan(drops, attaches, pending, hygiene, store=store, active_ids=active_ids)
+        _preview_plan(
+            drops, attaches, advice, pending, hygiene, store=store, active_ids=active_ids
+        )
         return
 
     if drops:
@@ -131,11 +137,11 @@ def evolve(
             drops, yes=yes, store=store,
             skills_dir=target_skills, mcp_config_path=target_mcp,
         )
-    if attaches:
+    if attaches or advice:
         _propose_attaches(
             attaches, yes=yes, store=store,
             skills_dir=target_skills, mcp_config_path=target_mcp,
-            active_ids=active_ids,
+            active_ids=active_ids, advice=advice,
         )
     if pending:
         _propose_memory_pending(pending, yes=yes, store=memory_store)
@@ -143,9 +149,32 @@ def evolve(
         _propose_memory_hygiene(hygiene, yes=yes, store=memory_store)
 
 
+def _render_advice(advice: list[Advice]) -> None:
+    """plugin 관측 사용에 대한 조언을 사람 말로 보여준다(A→B: 행위 아니라 조언).
+
+    pouch는 표면을 강제로 안 바꾼다 — 소유자(ECC/사용자)에게 안내만. reinforce는
+    "잘 쓰고 계세요"(그대로), suggest_off는 "요즘 안 쓰시네요, ECC에서 꺼볼까요"
+    (pouch가 직접 안 내림). observe의 죽은 "관측만" 줄을 이 조언이 대체한다.
+    """
+    if not advice:
+        return
+    console.print("\n🔌 [bold]플러그인 도구[/bold] (표면은 ECC가 관리 — pouch는 안내만)\n")
+    for a in advice:
+        if a.kind == "reinforce":
+            console.print(
+                f"  ● [cyan]{a.target}[/cyan] — 잘 쓰고 계세요 (최근 {a.count}회). 그대로 두세요."
+            )
+        else:  # suggest_off
+            console.print(
+                f"  ○ [cyan]{a.target}[/cyan] — 요즘 안 쓰시네요. "
+                "ECC에서 꺼도 될 것 같아요 [dim](pouch가 직접 내리진 않아요)[/dim]."
+            )
+
+
 def _preview_plan(
     drops: list[DropCandidate],
     attaches: list[AttachCandidate],
+    advice: list[Advice],
     pending: list[MemoryEntry],
     hygiene: list[HygieneCandidate],
     *,
@@ -167,13 +196,18 @@ def _preview_plan(
         console.print(f"     {pv.effect}")
         console.print(f"     되돌리기: [cyan]{pv.undo}[/cyan]")
 
+    # observe(plugin 관측)는 이제 advice가 대체한다 — 여기선 reattach·adopt만.
     for cand in attaches:
+        if cand.kind == "observe":
+            continue
         pv = preview_attach(cand)
-        arrow = {"reattach": "△", "adopt": "＋", "observe": "◦"}.get(pv.action, "•")
+        arrow = {"reattach": "△", "adopt": "＋"}.get(pv.action, "•")
         console.print(f"  {arrow} [cyan]{pv.target}[/cyan] {pv.action} — 최근 {cand.count}회 씀")
         console.print(f"     {pv.effect}")
         if pv.undo:
             console.print(f"     되돌리기: [cyan]{pv.undo}[/cyan]")
+
+    _render_advice(advice)
 
     for entry in pending:
         console.print(f"  ＋ [cyan]{entry.name}[/cyan] 기억 확인 — {entry.description}")
@@ -283,11 +317,14 @@ def _propose_attaches(
     skills_dir: Path,
     mcp_config_path: Path,
     active_ids: set[str],
+    advice: list[Advice],
 ) -> None:
-    """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt·observe는 안내만."""
+    """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt는 안내만.
+
+    plugin 관측(observe)은 이제 advice가 대체한다(A→B: 관측만이 아니라 조언).
+    """
     reattaches = [c for c in candidates if c.kind == "reattach"]
     adopts = [c for c in candidates if c.kind == "adopt"]
-    observes = [c for c in candidates if c.kind == "observe"]
 
     console.print("\n🧲 [bold]주머니로 당겨올 것[/bold]\n")
     for cand in reattaches:
@@ -299,11 +336,9 @@ def _propose_attaches(
             f"  • [cyan]{cand.entry_id}[/cyan] — 주머니 밖인데 최근 {cand.count}회 씀"
             f" → [cyan]pouch catalog import[/cyan]로 편입"
         )
-    for cand in observes:
-        console.print(
-            f"  • [cyan]{cand.entry_id}[/cyan] — 플러그인이 관리 중, 최근 {cand.count}회 씀"
-            " [dim](관측만)[/dim]"
-        )
+
+    # plugin 관측 사용 → 조언(행위 아님, 소유자에게 안내만).
+    _render_advice(advice)
 
     # '이거 써봐' — 반복 앵커 곁에 비슷한 후보도(안내만, 실행 아님).
     _render_try_this(candidates, store=store, active_ids=active_ids)

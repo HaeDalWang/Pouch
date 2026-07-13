@@ -219,6 +219,38 @@ def test_contract7_dry_run_shows_undo_but_changes_nothing(tmp_path: Path, monkey
     assert (skills_dir / "aws-swift" / "SKILL.md").exists()
 
 
+def test_contract7d_dry_run_advises_on_plugin_usage(tmp_path: Path, monkeypatch) -> None:
+    # (A→B) 조각 1 배선: plugin 관측 사용이 조언으로 뜬다(pouch가 안 내림, 안내만).
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from datetime import datetime, timedelta
+
+    from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.usage_log import UsageEvent, append_event
+
+    store = CatalogStore()
+    # ECC가 관리하는 plugin 도구(관측 전용) — alias로 런타임 사용명과 이어짐
+    store.save(
+        ToolEntry.linked(
+            id="context7", kind=ToolKind.MCP, source="ecc", title="context7",
+            description="라이브러리 문서", recipe={}, surface=SURFACE_PLUGIN,
+            aliases=("plugin_everything-claude-code_context7",),
+        )
+    )
+    # 최근 자주 씀 → 강화 조언
+    fresh = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    for _ in range(9):
+        append_event(UsageEvent(entry_id="plugin_everything-claude-code_context7", ts=fresh))
+
+    result = runner.invoke(app, ["evolve", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    # plugin 도구가 조언으로 인식됨(관측만 죽은 줄이 아니라)
+    assert "context7" in result.output
+    # pouch가 표면을 강제로 안 바꾼다는 게 드러나야(조언·안내 어조)
+    assert "잘 쓰" in result.output or "강화" in result.output or "자주" in result.output
+
+
 def test_contract7c_dry_run_shows_similar_for_repeated_anchor(tmp_path: Path, monkeypatch) -> None:
     # 조각 3('이거 써봐'): reattach 앵커가 뜰 때 같은 태그의 비슷한 후보도 함께.
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))
