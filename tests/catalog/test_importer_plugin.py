@@ -1,10 +1,12 @@
 """plugin 분해 계약 검증 — plugin은 ownership이 아니라 '번들'이다.
 
-importer는 plugin을 원자 단위로 쪼갠다:
+importer는 plugin을 원자 단위로 쪼갠다 (B: 관리 레이어, 2026-07-13 전환):
   ① plugin 자체는 카탈로그에 남지 않는다 (plugin이라는 엔트리/ownership 없음)
   ② .mcp.json의 각 서버 → linked (recipe+region, 외부 실행 위임)
-  ③ skills/*/SKILL.md → 각각 vendored (body 안 들임, upstream 추적)
-  ④ 재import는 vendored 스킬의 overlay를 보존한다 (import_vendored_skill 위임)
+  ③ skills·commands·agents·rules → 각각 '관측 스텁'(linked+recipe={}+surface=plugin).
+     plugin이 표면을 소유하므로 pouch는 body를 vendored로 주장하지 않는다 —
+     이중 소유(pouch vendored + marketplace 표면)를 피하는 게 (B)의 핵심.
+  ④ 재import는 관측 스텁의 overlay·tags를 보존한다("떨어져도 개인화는 남는다").
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from pouch.catalog.importer import apply_overlay, import_plugin
-from pouch.catalog.model import Overlay, Ownership, ToolKind
+from pouch.catalog.model import SURFACE_PLUGIN, Overlay, Ownership, ToolKind
 from pouch.catalog.store import CatalogStore
 
 # 스킬 본문에만 등장하는 표식 — vendored이므로 카탈로그에 새면 안 된다.
@@ -124,20 +126,36 @@ def test_contract2_mcp_becomes_linked(plugin_dir: Path, store: CatalogStore) -> 
     assert mcp.region == "us-east-1"
 
 
-def test_contract3_skills_are_vendored_no_body(
+def test_contract3_skills_are_observation_stubs_no_body(
     plugin_dir: Path, store: CatalogStore, tmp_path: Path
 ) -> None:
     # Act
     import_plugin(plugin_dir, store, synced_at="2026-06-30")
 
-    # Assert — 각 스킬은 vendored, body는 디스크에도 새지 않는다
+    # Assert — 각 스킬은 관측 스텁: plugin이 표면을 소유하므로 pouch는 body를
+    # vendored로 주장하지 않는다. linked+recipe={}+surface=plugin, kind는 보존.
     iam = store.get("aws-iam")
-    assert iam.ownership is Ownership.VENDORED
+    assert iam.ownership is Ownership.LINKED
+    assert iam.kind is ToolKind.SKILL  # 종류는 보존(풀·신호 판별이 kind를 봄)
+    assert iam.surface == SURFACE_PLUGIN  # 표면은 플러그인 관리 — pouch는 관측만
     assert iam.body is None
+    assert not iam.recipe  # 실행 조리법 없음 — 기동은 플러그인 런타임이(None/{} 무관)
+    assert iam.upstream is None  # body 소유 주장 안 함(이중 소유 회피)
     saved = (tmp_path / "catalog" / "aws-iam.md").read_text(encoding="utf-8")
     assert _BODY_MARKER not in saved
-    # upstream은 실제 SKILL.md를 가리켜 sync가 다시 읽을 수 있어야 한다
-    assert "aws-iam" in iam.upstream
+
+
+def test_contract3b_skill_id_is_bare_no_fabricated_alias(
+    plugin_dir: Path, store: CatalogStore
+) -> None:
+    # 스킬은 usage.jsonl에 tool_input.skill로 bare id가 찍힌다(Skill 툴).
+    # MCP식 plugin_<플러그인>_<스킬> alias를 지어 붙이지 않는다 — 실데이터로
+    # 확인 안 된 접두어를 지어내면 그 지어내기를 카탈로그에 박는 꼴(정정2 교훈).
+    import_plugin(plugin_dir, store, synced_at="2026-06-30")
+
+    iam = store.get("aws-iam")
+    assert iam is not None
+    assert iam.aliases == ()  # 지어낸 alias 없음
 
 
 def test_contract4_reimport_preserves_skill_overlay(
@@ -147,14 +165,14 @@ def test_contract4_reimport_preserves_skill_overlay(
     import_plugin(plugin_dir, store, synced_at="2026-06-30")
     apply_overlay(store, "aws-iam", Overlay(boundaries=("prod-gate",), notes="내 메모"))
 
-    # Act — plugin 재import (upstream 갱신 시뮬레이션)
+    # Act — plugin 재import (번들 갱신 시뮬레이션)
     import_plugin(plugin_dir, store, synced_at="2026-07-02")
 
-    # Assert — overlay 보존, synced_at 갱신
+    # Assert — 관측 스텁도 overlay를 보존한다("떨어져도 개인화는 남는다")
     iam = store.get("aws-iam")
     assert iam.overlay.boundaries == ("prod-gate",)
     assert iam.overlay.notes == "내 메모"
-    assert iam.synced_at == "2026-07-02"
+    assert iam.ownership is Ownership.LINKED  # 재import 후에도 관측 스텁
 
 
 def test_skills_carry_vendor_tag(plugin_dir: Path, store: CatalogStore) -> None:
@@ -241,8 +259,9 @@ def test_plugin_decomposes_commands_and_agents(
     assert by_id["santa-loop"].kind is ToolKind.COMMAND  # 파일명 stem
     assert "code-reviewer" in by_id  # agent는 name 필드(파일명 reviewer-file 아님)
     assert by_id["code-reviewer"].kind is ToolKind.AGENT
-    # 셋 다 vendored, body 안 들임
-    assert all(by_id[i].ownership is Ownership.VENDORED for i in by_id)
+    # 셋 다 관측 스텁(linked+surface=plugin), body·조리법 없음 — kind만 보존
+    assert all(by_id[i].ownership is Ownership.LINKED for i in by_id)
+    assert all(by_id[i].surface == SURFACE_PLUGIN for i in by_id)
     assert all(by_id[i].body is None for i in by_id)
 
 
@@ -288,4 +307,6 @@ def test_plugin_decomposes_rules_with_scoped_ids(
     assert "common__coding-style" in ids
     assert "README" not in ids  # 최상위 문서는 규칙 아님(한 겹 glob이 걸러냄)
     rule_entries = [e for e in result.entries if e.kind is ToolKind.RULE]
-    assert all(e.ownership is Ownership.VENDORED for e in rule_entries)
+    assert rule_entries  # 규칙이 실제로 분해됐다
+    assert all(e.ownership is Ownership.LINKED for e in rule_entries)
+    assert all(e.surface == SURFACE_PLUGIN for e in rule_entries)

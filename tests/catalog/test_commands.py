@@ -177,6 +177,8 @@ def test_contract4_import_plugin_decomposes(plugin_dir: Path) -> None:
     mcp = store.get("aws-mcp")
     skill = store.get("aws-iam")
     assert mcp is not None and mcp.ownership is Ownership.LINKED
+    # 이 fixture는 manifest(plugin.json)가 없는 스킬 폴더 → 사용자 소유(vendored).
+    # 진짜 플러그인(manifest 有)은 관측 스텁이 된다(test_importer_plugin.py가 커버).
     assert skill is not None and skill.ownership is Ownership.VENDORED
 
 

@@ -163,6 +163,9 @@ def import_vendored_skill(
     """SKILL.md를 vendored 항목으로 들인다(import_vendored_doc의 skill 특화).
 
     기존 호출부·테스트 호환을 위해 유지한다 — 실제 일은 import_vendored_doc이 한다.
+    CLI 단독 입양(`pouch catalog import ./SKILL.md`)과 sync 재방문이 이 vendored
+    경로를 쓴다. plugin 번들 안의 doc은 이 경로가 아니라 import_plugin_doc(관측
+    스텁)으로 간다 — plugin이 표면을 소유하므로 pouch가 body를 주장하면 안 된다.
     """
     return import_vendored_doc(
         path,
@@ -173,6 +176,59 @@ def import_vendored_skill(
         source=source,
         tags=tags,
     )
+
+
+def import_plugin_doc(
+    path: Path,
+    store: CatalogStore,
+    *,
+    kind: ToolKind,
+    source: str,
+    tags: tuple[str, ...] = (),
+) -> ToolEntry:
+    """plugin 번들 안의 문서형 도구(skill/command/agent/rule)를 관측 스텁으로 들인다.
+
+    (B) 관리 레이어 정렬(2026-07-13): plugin이 표면을 소유하므로 pouch는 body를
+    vendored로 주장하지 않는다. 이중 소유(pouch vendored + marketplace 표면)를
+    피하려고 linked+recipe={}+surface=plugin으로만 담는다:
+      - ownership=linked : "실행은 외부(플러그인 런타임)에 위임"이 (B)와 일치.
+      - recipe={}        : pouch가 기동하지 않는다(빈 조리법). install 경로가
+                           surface=plugin을 막아 빈 recipe로 오등록되지 않는다.
+      - surface=plugin   : 진화 조언(plan_advice)이 이걸 신호로 본다. drop 후보
+                           (active 표면만 봄)에는 안 걸려 거짓 drop이 없다.
+      - kind 보존        : 추천 풀·신호 판별(has_usage_signal)이 종류를 본다.
+
+    id는 kind별 규칙 그대로(_resolve_doc_id). 스킬은 usage에 bare id로 찍히므로
+    (Skill 툴 tool_input.skill) MCP식 plugin_<플러그인>_<도구> alias를 지어 붙이지
+    않는다 — 실데이터로 확인 안 된 접두어를 지어내면 그 지어내기가 카탈로그에
+    박힌다(정정2 교훈: 셸/추측으로 단정 금지). 재import는 기존 overlay·tags를
+    보존한다("떨어져도 개인화는 남는다").
+    """
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    meta = post.metadata
+    entry_id = _resolve_doc_id(path, meta, kind)
+    title = str(meta.get("title") or meta.get("name") or entry_id)
+    description = str(meta.get("description", ""))
+
+    existing = store.get(entry_id)
+    preserved_overlay = existing.overlay if existing else None
+    preserved_tags = existing.tags if existing else tags
+
+    entry = ToolEntry.linked(
+        id=entry_id,
+        kind=kind,
+        source=source,
+        title=title,
+        description=description,
+        recipe={},
+        tags=preserved_tags,
+        surface=SURFACE_PLUGIN,
+    )
+    # linked 팩토리는 overlay를 안 받는다(vendored 필드) — 보존분만 얹어 새 엔트리로.
+    if preserved_overlay is not None:
+        entry = replace(entry, overlay=preserved_overlay)
+    store.save(entry)
+    return entry
 
 
 def import_owned_skill(
@@ -331,6 +387,31 @@ def import_hooks(
     return entries
 
 
+def _import_bundle_doc(
+    doc_md: Path,
+    store: CatalogStore,
+    *,
+    kind: ToolKind,
+    synced_at: str,
+    source: str,
+    tags: tuple[str, ...],
+    plugin_name: str | None,
+) -> ToolEntry:
+    """번들 안 문서형 도구를 표면 소유자에 맞게 담는다(MCP 대칭).
+
+    plugin_name(=manifest .claude-plugin/plugin.json에서 읽음)이 있으면 진짜
+    플러그인이 표면을 소유 → 관측 스텁(surface=plugin). manifest가 없으면
+    사용자가 모아둔 스킬 폴더 → vendored(pouch 소유, 설치 가능). import_mcp_servers
+    가 `surface = plugin if plugin_name else None`로 가르는 것과 같은 기준이다.
+    """
+    if plugin_name is not None:
+        return import_plugin_doc(doc_md, store, kind=kind, source=source, tags=tags)
+    return import_vendored_doc(
+        doc_md, store, kind=kind, upstream=str(doc_md),
+        synced_at=synced_at, source=source, tags=tags,
+    )
+
+
 def import_plugin(
     plugin_dir: Path,
     store: CatalogStore,
@@ -385,14 +466,9 @@ def import_plugin(
         for doc_md in sorted(doc_dir.glob(pattern)):
             try:
                 entries.append(
-                    import_vendored_doc(
-                        doc_md,
-                        store,
-                        kind=kind,
-                        upstream=str(doc_md),
-                        synced_at=synced_at,
-                        source=source,
-                        tags=tags,
+                    _import_bundle_doc(
+                        doc_md, store, kind=kind, synced_at=synced_at,
+                        source=source, tags=tags, plugin_name=plugin_name,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 — 외부 번들은 신뢰 경계 밖
