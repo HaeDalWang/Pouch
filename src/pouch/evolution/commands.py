@@ -243,7 +243,7 @@ def _render_try_this(
     for plan in plans:
         console.print(f"  [dim]{plan.anchor_id}와 비슷:[/dim]")
         for cand in plan.similar:
-            shared = ", ".join(sorted(cand.shared_tags))
+            shared = ", ".join(sorted(cand.shared_tokens))
             console.print(
                 f"    • [cyan]{cand.entry.id}[/cyan] — {cand.entry.description}"
                 f" [dim](비슷한 점: {shared})[/dim]"

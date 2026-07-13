@@ -22,6 +22,7 @@ from pouch.evolution.similar import TryThis, plan_try_this
 
 
 def _entry(id: str, *tags: str) -> ToolEntry:
+    # 매칭은 토큰(설명+태그+id) 겹침. 최소 2겹이라 예제는 태그 2개 이상 공유.
     return ToolEntry.vendored(
         id=id, kind=ToolKind.SKILL, source="s", title=id, description=f"{id} 설명",
         upstream="/up", synced_at="2026-01-01", overlay=Overlay(tags=tuple(tags)),
@@ -29,7 +30,11 @@ def _entry(id: str, *tags: str) -> ToolEntry:
 
 
 def test_contract1_in_pool_anchor_gets_similar() -> None:
-    entries = [_entry("terraform", "iac"), _entry("pulumi", "iac"), _entry("cdk", "iac")]
+    entries = [
+        _entry("terraform", "iac", "cloud"),
+        _entry("pulumi", "iac", "cloud"),
+        _entry("cdk", "iac", "cloud"),
+    ]
 
     result = plan_try_this(["terraform"], entries, active_ids=set())
 
@@ -41,7 +46,7 @@ def test_contract1_in_pool_anchor_gets_similar() -> None:
 
 def test_contract2_out_of_pool_anchor_drops_silently() -> None:
     # adopt 앵커(카탈로그 밖) → 풀에 없음 → 날것 예외 → 결과에서 조용히 빠짐
-    entries = [_entry("pulumi", "iac"), _entry("cdk", "iac")]
+    entries = [_entry("pulumi", "iac", "cloud"), _entry("cdk", "iac", "cloud")]
 
     result = plan_try_this(["external-tool"], entries, active_ids=set())
 
@@ -50,7 +55,7 @@ def test_contract2_out_of_pool_anchor_drops_silently() -> None:
 
 def test_contract3_anchor_without_similars_drops() -> None:
     # 앵커는 풀에 있지만 겹치는 후보가 없음 → 소음 0
-    entries = [_entry("terraform", "iac"), _entry("jest", "testing")]
+    entries = [_entry("terraform", "iac", "cloud"), _entry("jest", "testing", "unit")]
 
     result = plan_try_this(["terraform"], entries, active_ids=set())
 
@@ -58,7 +63,11 @@ def test_contract3_anchor_without_similars_drops() -> None:
 
 
 def test_contract4_delegates_active_exclusion() -> None:
-    entries = [_entry("terraform", "iac"), _entry("pulumi", "iac"), _entry("cdk", "iac")]
+    entries = [
+        _entry("terraform", "iac", "cloud"),
+        _entry("pulumi", "iac", "cloud"),
+        _entry("cdk", "iac", "cloud"),
+    ]
 
     # pulumi 이미 켬 → 비슷한 목록에서 빠짐(find_similar에 위임)
     result = plan_try_this(["terraform"], entries, active_ids={"pulumi"})
@@ -68,8 +77,8 @@ def test_contract4_delegates_active_exclusion() -> None:
 
 def test_contract5_multiple_anchors_each_grouped() -> None:
     entries = [
-        _entry("terraform", "iac"), _entry("pulumi", "iac"),
-        _entry("jest", "testing"), _entry("vitest", "testing"),
+        _entry("terraform", "iac", "cloud"), _entry("pulumi", "iac", "cloud"),
+        _entry("jest", "testing", "unit"), _entry("vitest", "testing", "unit"),
     ]
 
     result = plan_try_this(["terraform", "jest"], entries, active_ids=set())
@@ -79,7 +88,7 @@ def test_contract5_multiple_anchors_each_grouped() -> None:
 
 
 def test_contract6_is_pure() -> None:
-    entries = [_entry("a", "x"), _entry("b", "x")]
+    entries = [_entry("a", "x", "y"), _entry("b", "x", "y")]
 
     assert plan_try_this(["a"], entries, active_ids=set()) == plan_try_this(
         ["a"], entries, active_ids=set()
