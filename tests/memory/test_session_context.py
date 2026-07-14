@@ -42,9 +42,9 @@ def test_contract1_note_zone_stays_below_boundary() -> None:
     )
 
     # 쪽지가 boundary 구역보다 아래
-    assert "자율성 경계" in out
+    assert "Autonomy Boundaries" in out
     assert "🦦 정리할 게 쌓였어요" in out
-    assert out.index("자율성 경계") < out.index("🦦 정리할 게 쌓였어요")
+    assert out.index("Autonomy Boundaries") < out.index("🦦 정리할 게 쌓였어요")
 
 
 def test_contract2_below_threshold_is_truly_empty() -> None:
@@ -67,7 +67,7 @@ def test_contract3a_note_failure_preserves_fixed_zone() -> None:
     out = render_session_context([_boundary()], note_zone=_boom)
 
     assert "force push 금지" in out
-    assert "자율성 경계" in out
+    assert "Autonomy Boundaries" in out
 
 
 def test_contract3b_fixed_failure_blocks_note_escape() -> None:
@@ -97,8 +97,8 @@ def test_checkpoint_protocol_always_in_fixed_zone() -> None:
 
     # 기억이 0개여도 규약은 주입된다
     empty = render_session_context([])
-    assert "정렬 체크포인트" in empty
-    assert "◆ 목표:" in empty
+    assert "Alignment Checkpoint" in empty
+    assert "◆ GOAL:" in empty
 
     # 앵커가 있으면 그 목표가 규약에 박힌다
     with_anchor = render_session_context(
@@ -119,8 +119,8 @@ def test_checkpoint_below_boundary_above_memory() -> None:
     )
     out = render_session_context([_boundary(), user])
 
-    assert out.index("자율성 경계") < out.index("정렬 체크포인트")
-    assert out.index("정렬 체크포인트") < out.index("prefers-uv")
+    assert out.index("Autonomy Boundaries") < out.index("Alignment Checkpoint")
+    assert out.index("Alignment Checkpoint") < out.index("prefers-uv")
 
 
 def test_checkpoint_note_failure_still_preserves_checkpoint() -> None:
@@ -129,4 +129,4 @@ def test_checkpoint_note_failure_still_preserves_checkpoint() -> None:
         raise RuntimeError("쪽지 터짐")
 
     out = render_session_context([], note_zone=_boom)
-    assert "정렬 체크포인트" in out
+    assert "Alignment Checkpoint" in out

@@ -5,8 +5,17 @@
 관찰 가능한 사건으로만 정의하고(트리거), 장황함이 들어올 공간을 형식(4슬롯)으로
 구조적으로 막는다(structural constraint > documentation promise).
 
-손잡이(§5)는 훅으로 강제하지 않는다 — Claude Code에 "요약 뱉은 직후" 이벤트가
-없고, 손잡이는 요약 밑 한 줄이라 제일 쉬운 부분이라, 이 주입 지침이 붙이게 한다.
+v2 언어 규칙: 에이전트가 읽는 지침·슬롯 라벨(GOAL/DONE/NOT/LEFT/BRANCH)·블록
+마커(⟦ALIGN⟧·◆·↳)는 영어/ASCII다 — GPT·Gemini의 지침 준수가 더 안정적이고,
+Phase-2 훅이 정규식으로 마커를 잡을 때 도구별 인코딩을 더 잘 견딘다. 반대로
+에이전트가 채워 사용자에게 보이는 값(앵커 목표·요약 슬롯 내용)과 손잡이 문구는
+한글이다 — 읽는 사람이 승도라 빠른 스캔이 목적이기 때문. 라벨은 기계를 위해,
+값은 사람을 위해.
+
+⟦ALIGN⟧…⟦/ALIGN⟧ 마커는 core/adapter 경계의 못이다. Phase-1은 이 블록을 지침으로만
+전달하지만(약속 수준), Phase-2 훅이 이 마커로 블록을 찾아 손잡이 누락을 강제 부착한다
+— 마커를 바꾸면 Phase-1 출력이 Phase-2에서 버려진다. 손잡이(§규칙)는 아직 훅으로
+강제하지 않는다 — Claude Code에 "요약 뱉은 직후" 이벤트가 없어, 이 주입 지침이 붙이게 한다.
 """
 
 from __future__ import annotations
@@ -14,6 +23,7 @@ from __future__ import annotations
 from pouch.checkpoint.anchor import Anchor
 
 # 손잡이 문구 — 요약 뒤에 매번 붙는다. 흐름은 안 끊고 개입 여지만 남기는 절충.
+# 사용자(승도)가 요약과 함께 보는 출력이라 한글이다(라벨·마커는 영어여도 이 값은 한글).
 HANDLE = "↳ (이대로 계속 감. 방향 틀렸으면 지금 말해)"
 
 
@@ -24,74 +34,92 @@ def render_checkpoint_protocol(anchor: Anchor | None) -> list[str]:
     반환은 줄 리스트 — render_context가 다른 구역과 함께 join한다.
     """
     lines = [
-        "## 🎯 정렬 체크포인트 — 갈림길에서 방향 맞추기",
+        "## Alignment Checkpoint",
+        "",
+        "Output language: write all FILLED-IN VALUES in Korean. Keep the labels "
+        "and markers exactly as-is (English/ASCII). Do not switch the content to "
+        "English just because the labels are English.",
         "",
     ]
     lines.extend(_render_goal(anchor))
     lines.extend(_render_triggers())
     lines.extend(_render_format(anchor))
-    lines.extend(_render_handle())
+    lines.extend(_render_rules())
     return lines
 
 
 def _render_goal(anchor: Anchor | None) -> list[str]:
-    """현재 앵커(이번 목표)를 박거나, 없으면 고정 안내."""
+    """현재 앵커(이번 목표)를 박거나, 없으면 고정 안내. 목표 값 자체는 한글."""
     if anchor is not None:
         return [
-            f"**이번 목표(앵커):** {anchor.goal}",
-            "이 목표는 고정점이다. 아래 ◆목표 슬롯에 이 문장을 **그대로** 넣어라 "
-            "— 절대 네 말로 다시 쓰지 마라(재서술하는 순간 정렬이 깨진다).",
+            "### Goal anchor",
+            f"**Current goal (anchor):** {anchor.goal}",
+            "This anchor is the fixed point. Copy this sentence **verbatim** into "
+            "the `◆ GOAL:` slot below — never rewrite it in your own words "
+            "(the moment you re-summarize it, alignment breaks).",
             "",
         ]
     return [
-        "**이번 목표(앵커):** 아직 없음.",
-        "작업을 시작하면 사용자의 첫 지시에서 목표 한 줄을 뽑아 "
-        "`pouch checkpoint set \"<한 줄 목표>\"`로 고정하라. 이후 요약의 ◆목표 "
-        "슬롯은 `pouch checkpoint show` 값을 그대로 재사용한다.",
+        "### Goal anchor",
+        "**Current goal (anchor):** none yet.",
+        "When a task starts, compress the user's first instruction into one line "
+        'and lock it with `pouch checkpoint set "<one-line goal>"`. Afterward the '
+        "`◆ GOAL:` slot reuses the `pouch checkpoint show` value verbatim.",
         "",
     ]
 
 
 def _render_triggers() -> list[str]:
-    """트리거 3종 — 판단어 금지, 관찰 가능한 사건으로만(§3)."""
+    """트리거 3종 — 판단 위임 금지, 관찰 가능한 사건으로만."""
     return [
-        "**언제 요약하나 (아래 사건이 일어나면. \"중요한가?\" 같은 감 판단 금지):**",
-        "1. **택1** — 두 갈래 이상 중 하나를 골라 진행할 때 (A안 vs B안)",
-        "2. **재계획** — 앞 스텝 결과를 보고 원래 계획을 바꿀 때",
-        "3. **계획 밖 행동 시작** — 원래 안 하려던 걸 새로 시작할 때 "
-        "(계획에 없던 파일·도구·경로)",
+        "### When to summarize (triggers)",
+        "Emit an alignment summary when **any** of these actually happens. Do NOT "
+        'judge "is this important?" by feel — only check whether the observable '
+        "event occurred:",
+        "1. **Pick-one** — choosing one path among two or more to proceed (plan A vs B).",
+        "2. **Replan** — changing the original plan based on a previous step's result.",
+        "3. **Off-plan start** — starting something not in the original plan "
+        "(a file / tool / path that wasn't planned).",
         "",
-        "되돌리기 비싼 짓(삭제·배포·외부 호출)은 기존 확인 절차가 이미 잡으므로 "
-        "여기서 중복하지 않는다.",
+        "Hard-to-reverse actions (delete / deploy / external call) are already "
+        "caught by the existing confirmation flow, so they are not duplicated here.",
         "",
     ]
 
 
 def _render_format(anchor: Anchor | None) -> list[str]:
-    """4슬롯 형식 — 각 한 줄, 형용사·추상어 금지(§4)."""
-    goal_slot = anchor.goal if anchor is not None else "<앵커 목표 그대로>"
+    """요약 형식 — ⟦ALIGN⟧ 블록으로 감싼 4슬롯. 라벨 영어, 값 한글."""
+    goal_slot = anchor.goal if anchor is not None else "{the locked anchor, verbatim — in Korean}"
     return [
-        "**요약 형식 (정확히 이 4슬롯. 각 한 줄. 형용사·추상어 금지):**",
+        "### Summary format (use EXACTLY this format)",
+        "Emit the block below with **exactly** these markers and order. Each slot "
+        "is **one line**, values in **Korean**. No adjectives, no abstractions. If "
+        "a word would need study to read, it's a format violation.",
         "```",
-        f"◆ 목표: {goal_slot}",
-        "◆ 했다/못했다: <완료·미완료만>",
-        "◆ 남은 것: <한 줄>",
-        "◆ 새 분기: <있으면 한 줄 / 없으면 \"없음\">",
+        "⟦ALIGN⟧",
+        f"◆ GOAL: {goal_slot}",
+        "◆ DONE/NOT: {done vs not-done only — in Korean}",
+        "◆ LEFT: {one line — in Korean}",
+        '◆ BRANCH: {one line if any / "없음" if none}',
+        HANDLE,
+        "⟦/ALIGN⟧",
         "```",
-        "각 슬롯 한 줄. 두 줄 이상이거나 초등학생이 못 읽을 단어가 들어가면 형식 "
-        "위반이다.",
         "",
     ]
 
 
-def _render_handle() -> list[str]:
-    """손잡이 부착 지시 + 멈추지 않음 명시(§5)."""
+def _render_rules() -> list[str]:
+    """규칙 — 멈추지 않음·손잡이 매번·GOAL은 복사·마커 불변."""
     return [
-        "**요약 바로 뒤에 이 손잡이 한 줄을 매번 붙여라:**",
-        "```",
-        HANDLE,
-        "```",
-        "손잡이는 작업을 **멈추지 않는다** — 진행은 계속되고, 손잡이는 \"지금 "
-        "개입 가능\"을 알리는 표식일 뿐이다. 승인을 기다리지 마라.",
+        "### Rules",
+        "- After emitting the summary, **do NOT stop.** Do not wait for approval; "
+        "keep going.",
+        f"- The `↳` handle line (`{HANDLE}`) is attached **every time**, inside the "
+        "block right after `◆ BRANCH`. Not conditional — without it the summary is worthless.",
+        "- The `◆ GOAL:` slot is a **copy** of the start-time anchor — never re-summarized.",
+        "- Keep the `⟦ALIGN⟧` / `⟦/ALIGN⟧` markers and the `◆` `↳` symbols "
+        "**unchanged** (a machine finds the block by these).",
+        "- Labels (GOAL/DONE/NOT/LEFT/BRANCH) stay English; the text after each "
+        "label is Korean.",
         "",
     ]

@@ -60,8 +60,8 @@ def test_boundary_pinned_above_other_memories() -> None:
     out = render_context([user, _boundary("auto-commit")])
 
     # Assert — 경계 섹션이 일반 메모리보다 위
-    assert "자율성 경계" in out
-    assert out.index("자율성 경계") < out.index("prefers-uv")
+    assert "Autonomy Boundaries" in out
+    assert out.index("Autonomy Boundaries") < out.index("prefers-uv")
 
 
 def test_boundary_injects_body_and_scope() -> None:

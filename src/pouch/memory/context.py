@@ -80,10 +80,10 @@ def render_context(
     others = [entry for entry in ordered if entry.type is not MemoryType.BOUNDARY]
 
     lines = [
-        "# 🦦 pouch memory — 사용자에 대해 기억하는 것",
+        "# 🦦 pouch memory — what pouch remembers about the user",
         "",
-        "아래는 pouch가 기억해 둔 사용자·프로젝트 맥락이다. 이를 참고해 응답하라.",
-        "더 자세한 내용이 필요하면 `pouch memory recall <키워드>`로 본문을 가져올 수 있다.",
+        "Below is the user/project context pouch has stored. Use it to inform your responses.",
+        "For more detail, pull the body with `pouch memory recall <keyword>`.",
         "",
     ]
     if boundaries:
@@ -97,14 +97,14 @@ def render_context(
 def _render_boundaries(boundaries: list[MemoryEntry]) -> list[str]:
     """자율성 경계를 본문까지 포함해 최상단에 강조 렌더링한다."""
     lines = [
-        "## ⚠️ 자율성 경계 — 반드시 따를 것",
+        "## ⚠️ Autonomy Boundaries — MUST follow",
         "",
-        "각 항목 앞 대괄호 라벨([DENY]/[ASK]/[ALLOW])이 방향의 권위다 — "
-        "본문 산문이 애매하면 라벨을 따르라. "
-        "금지(deny)는 항상 우선하며 넓게 해석하라. "
-        "허용(allow)은 아래에 적힌 범위 안에서만 좁게 적용하라. "
-        "확인(ask)은 실행 전 사용자에게 물어라. "
-        "프로젝트 범위 허용을 이 프로젝트 밖으로 확장하지 마라.",
+        "The bracket label in front of each item ([DENY]/[ASK]/[ALLOW]) is the "
+        "authority on direction — if the prose is ambiguous, follow the label. "
+        "DENY always wins and is interpreted broadly. "
+        "ALLOW applies narrowly, only within the scope written below it. "
+        "ASK means ask the user before acting. "
+        "Do not extend a project-scoped ALLOW beyond this project.",
         "",
     ]
     for entry in boundaries:
