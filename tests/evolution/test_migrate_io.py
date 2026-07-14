@@ -141,3 +141,40 @@ def test_migrate_reverses_reconcile(tmp_path: Path) -> None:
     assert demoted == ["exa"]
     assert catalog.get("exa") is None
     assert source.get("exa") is not None
+
+
+# --- plan_migrate: 읽기전용 계획(적용 없이 후보만). dry-run·백업 UI의 단일 출처 ---
+
+
+def test_plan_migrate_lists_candidates_without_applying(tmp_path: Path) -> None:
+    # Arrange — 안 쓴 스킬(대상) + 쓴 스킬(제외) + 안 쓴 훅(신호없음 제외).
+    from pouch.evolution.orchestrate import plan_migrate
+
+    source, catalog = _stores(tmp_path)
+    catalog.save(_catalog_skill("unused-skill"))
+    catalog.save(_catalog_skill("used-skill"))
+    catalog.save(_catalog_skill("some-hook", kind=ToolKind.HOOK))
+    usage = tmp_path / "usage.jsonl"
+    append_event(UsageEvent("used-skill", "2026-07-13T09:00:00"), log_path=usage)
+
+    # Act
+    planned = plan_migrate(catalog_store=catalog, source_store=source, usage_path=usage)
+
+    # Assert — 후보는 migrate와 같지만 아무것도 안 옮긴다(읽기전용).
+    assert planned == ["unused-skill"]
+    assert catalog.get("unused-skill") is not None  # 안 옮김
+    assert list(source.list()) == []  # 소스도 그대로
+
+
+def test_plan_migrate_matches_migrate_result(tmp_path: Path) -> None:
+    # 계획과 실제 적용이 같은 집합을 다뤄야 한다(preview가 결과를 지어내지 않음).
+    from pouch.evolution.orchestrate import plan_migrate
+
+    source, catalog = _stores(tmp_path)
+    catalog.save(_catalog_skill("a"))
+    catalog.save(_catalog_skill("b"))
+    usage = tmp_path / "usage.jsonl"
+
+    planned = plan_migrate(catalog_store=catalog, source_store=source, usage_path=usage)
+    demoted = migrate(source_store=source, catalog_store=catalog, usage_path=usage)
+    assert planned == demoted == ["a", "b"]

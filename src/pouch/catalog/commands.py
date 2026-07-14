@@ -32,6 +32,9 @@ from pouch.catalog.promote import promote
 from pouch.catalog.store import CatalogStore
 from pouch.memory.store import MemoryStore
 from pouch.catalog.sync import SyncReport, moved_component, sync_all
+from pouch.backup.local import backup_to_local
+from pouch.evolution.orchestrate import migrate as migrate_unused
+from pouch.evolution.orchestrate import plan_migrate
 from pouch.evolution.state import active_entries
 
 app = typer.Typer(
@@ -433,3 +436,56 @@ def _render_sync_report(report: SyncReport) -> None:
             "(본체 유실). 카탈로그·개인화는 남아있어요."
             " 재연결: [cyan]pouch catalog import <새 경로>[/cyan]"
         )
+
+
+@app.command("migrate")
+def migrate(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="옮길 목록만 보여주고 아무것도 안 함(볼게, 해 아님)."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 바로 강등."),
+) -> None:
+    """안 쓰는 카탈로그 도구를 소스 스테이징으로 되돌린다(관문 이전 잉여 정리).
+
+    관문 (다) 이전 import는 실사용과 무관하게 카탈로그에 직행시켰다. 이 일회성
+    통로가 그 잉여를 관문 뒤(소스)로 되돌린다 — 실제로 쓴 것만 카탈로그에 남긴다.
+    reconcile(진입)과 달리 evolve 자동 루프에 없다: 파괴적(카탈로그 삭제)이라
+    사용자가 의도적으로 부르고, 실데이터를 옮기므로 적용 전 자동 백업을 동반한다.
+    """
+    catalog_store = CatalogStore()
+    source_store = CatalogStore(catalog_dir=paths.sources_dir())
+
+    candidates = plan_migrate(catalog_store=catalog_store, source_store=source_store)
+    if not candidates:
+        console.print("📦 소스로 되돌릴 도구가 없습니다. 카탈로그가 실사용에 맞게 유지되고 있어요.")
+        return
+
+    console.print(
+        "📦 [bold]안 쓰는 카탈로그 도구[/bold] (소스로 되돌려도 재사용하면 다시 진입합니다)\n"
+    )
+    for entry_id in candidates:
+        console.print(f"  ▽ [cyan]{entry_id}[/cyan] → 소스 스테이징으로")
+
+    if dry_run:
+        console.print(
+            f"\n{len(candidates)}개가 대상입니다. 실행하려면: [cyan]pouch catalog migrate --yes[/cyan]"
+            " [dim](적용 전 자동 백업)[/dim]"
+        )
+        return
+
+    if not yes and not typer.confirm(
+        "\n이 도구들을 소스로 되돌릴까요? (적용 전 백업을 뜹니다)", default=False
+    ):
+        console.print("그대로 두었습니다.")
+        return
+
+    # 이동 전 자동 백업 — 실데이터를 옮기므로 되돌림 경로를 먼저 확보한다.
+    archive = backup_to_local(paths.global_root(), paths.backup_dir(), now=_now())
+    console.print(f"[green]✓[/green] 적용 전 백업 → {archive}")
+
+    demoted = migrate_unused(source_store=source_store, catalog_store=catalog_store)
+    console.print(f"\n[green]✓[/green] {len(demoted)}개를 소스로 되돌렸습니다: {', '.join(demoted)}")
+    console.print(
+        "   재사용하면 [cyan]pouch evolve[/cyan]가 다시 카탈로그로 진입시킵니다"
+        f" · 되돌리려면 [cyan]pouch restore {archive}[/cyan]"
+    )

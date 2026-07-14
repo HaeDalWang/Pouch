@@ -14,5 +14,8 @@ import pytest
 def _isolate_home(tmp_path_factory, monkeypatch) -> None:
     pouch_home = tmp_path_factory.mktemp("pouch_home")
     claude_home = tmp_path_factory.mktemp("claude_home")
+    backup_home = tmp_path_factory.mktemp("pouch_backups")
     monkeypatch.setenv("POUCH_HOME", str(pouch_home))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
+    # 백업 목적지도 격리 — migrate·backup 커맨드가 실제 ~/pouch-backups에 쓰지 않게.
+    monkeypatch.setenv("POUCH_BACKUP_DIR", str(backup_home))
