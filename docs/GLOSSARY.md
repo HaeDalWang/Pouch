@@ -34,21 +34,51 @@
 
 ## 카탈로그 / 장부 (catalog)
 
-**쉬운 말** — 주머니에 담을 **수 있는** 것들의 목록. 창고 재고 장부다.
-파일 하나 = 도구 하나. `~/.pouch/catalog/`에 산다.
+**쉬운 말** — pouch가 **"네 도구"로 관리하는** 것들의 목록. 파일 하나 = 도구 하나.
+`~/.pouch/catalog/`에 산다. 여기 있는 것만 pouch가 챙긴다(목록·상태·추천·오르내림
+제안). 소스(아래)에서 실제로 쓰거나 install해 **진입한** 것이 여기 올라온다.
 
-**왜 이 개념이 생겼나** — 무엇을 담을 수 있는지의 레지스트리(등록부)가 있어야
-init이 "이 중에서 너에게 맞는 걸 골라줄게"를 할 수 있다. 후보 풀이 먼저 있어야
-선택이 가능하다.
+**왜 이 개념이 생겼나** — pouch가 관리할 도구와 아직 관심 밖인 후보를 갈라야
+했기 때문이다. import한 것을 전부 여기 넣으면(옛 방식) 안 쓰는 도구 수백 개가
+"내가 진짜 뭘 쓰는지"의 신호를 묻는다. 그래서 진입 문턱을 두어, **실사용이
+증명한 것만** 장부에 올린다(관문 "다" 정책).
 
-**헷갈리기 쉬운 점** — **카탈로그에 있다 ≠ 에이전트가 쓸 수 있다.** 카탈로그는
-"쓸 수 있는 것"이 아니라 "쓸 수 **있게 될 수 있는** 후보"다. 두 단계를 거친다:
-① `catalog import`로 창고에 등록(아직 못 씀) → ② `catalog install`/`init`으로
-**표면**(연장통)에 올림 → 그제서야 에이전트가 실사용. 카탈로그는 첫 단계까지만이다.
+**헷갈리기 쉬운 점** — 이제 도구는 **세 자리**를 거친다:
+① `catalog import`로 **소스**에 재워둠(pouch가 아직 못 본 척) → ② 실제로 쓰거나
+`install`하면 **장부**로 진입(pouch가 관리 시작) → ③ `install`로 **표면**(연장통)에
+올림(에이전트가 실사용). 옛 문서는 ①과 ②가 한 단계였다 — import가 곧 장부 등록.
+지금은 그 사이에 소스라는 대기 자리가 생겼다. 그리고 **장부에 있다 ≠ 에이전트가
+쓸 수 있다**는 여전히 맞다(그건 ③ 표면의 몫).
 
 **위치** — 저장·조회 [src/pouch/catalog/store.py](../src/pouch/catalog/store.py) ·
 들여오기 [src/pouch/catalog/importer.py](../src/pouch/catalog/importer.py) ·
+소스→장부 진입 [src/pouch/evolution/reconcile.py](../src/pouch/evolution/reconcile.py) ·
 표면에 올리기 [src/pouch/catalog/install.py](../src/pouch/catalog/install.py)
+
+---
+
+## 소스 / 소스 스테이징 (sources)
+
+**쉬운 말** — import했지만 **아직 안 써서 장부엔 안 든** 것들이 재워지는 대기
+자리. `~/.pouch/sources/`에 산다. 백과사전에 항목이 있다고 표시만 한 것 —
+내 노트(장부)에 옮겨 적힌 건 아니다. `pouch catalog list --sources`로 본다.
+
+**왜 이 개념이 생겼나** — `import`가 곧바로 장부에 넣던 옛 방식에선, 플러그인
+하나를 들이면 그 안의 스킬 수백 개가 몽땅 장부로 직행했다. 그래서 import를
+"가리키기"로 낮추고, 진짜 장부 진입은 실사용에 맡기려고 이 중간 자리를 만들었다
+(관문 "다"). import는 후보를 넓게 가리키고, 무엇이 장부에 들어갈지는 사용이 정한다.
+
+**헷갈리기 쉬운 점** — 소스에 있는 동안 pouch는 **일부러 못 본 척한다**: 목록에도
+안 뜨고(`--sources`로만 보임), 상태·추천·evolve 제안 어디에도 안 잡힌다. "import했는데
+왜 아무 일도 안 일어나지?"의 답이 이것이다 — 정상이다. 한 번 써보거나 `install`하면
+그때 장부로 진입해 pouch의 레이더에 들어온다. 소스는 카탈로그와 **형제 디렉토리**라
+같은 코드(`CatalogStore`)로 다루되, 위치가 곧 상태 구분이다.
+
+**위치** — 경로 [src/pouch/paths.py](../src/pouch/paths.py) (`sources_dir`) ·
+import가 소스로 담음 [src/pouch/catalog/commands.py](../src/pouch/catalog/commands.py)
+(`import_source`) · 진입(promote)·강등(demote)
+[src/pouch/catalog/promote.py](../src/pouch/catalog/promote.py) ·
+[src/pouch/catalog/demote.py](../src/pouch/catalog/demote.py)
 
 ---
 
