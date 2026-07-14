@@ -46,3 +46,17 @@ def test_global_memory_dir_under_home(monkeypatch) -> None:
     monkeypatch.delenv("POUCH_HOME", raising=False)
     assert paths.global_memory_dir().name == "memory"
     assert paths.global_memory_dir().parent.name == ".pouch"
+
+
+def test_sources_dir_under_root(monkeypatch) -> None:
+    # 소스 스테이징 디렉토리 — 카탈로그의 형제(같은 ~/.pouch 아래, 다른 폴더).
+    monkeypatch.delenv("POUCH_HOME", raising=False)
+    assert paths.sources_dir().name == "sources"
+    assert paths.sources_dir().parent.name == ".pouch"
+
+
+def test_sources_dir_is_sibling_of_catalog(monkeypatch) -> None:
+    # 소스(가리키기)와 카탈로그(진입)는 위치로 갈린다 — 같은 부모, 다른 폴더.
+    monkeypatch.delenv("POUCH_HOME", raising=False)
+    assert paths.sources_dir().parent == paths.catalog_dir().parent
+    assert paths.sources_dir() != paths.catalog_dir()

@@ -22,8 +22,23 @@ def global_memory_dir() -> Path:
 
 
 def catalog_dir() -> Path:
-    """도구 카탈로그 디렉토리(`~/.pouch/catalog/`)."""
+    """도구 카탈로그 디렉토리(`~/.pouch/catalog/`).
+
+    진입한 도구가 산다 — 실사용·install·세트로 카탈로그에 들어온 것. 목록·조언·
+    추천이 보는 곳. 소스 스테이징(sources_dir)과 위치로 갈린다.
+    """
     return global_root() / "catalog"
+
+
+def sources_dir() -> Path:
+    """소스 스테이징 디렉토리(`~/.pouch/sources/`) — 관문 (다)의 "가리키기" 자리.
+
+    import한 번들이 담은 것을 카탈로그에 올리기 전 재워두는 곳. 목록·조언·추천은
+    여기를 안 본다("아직 안 쓴 백과사전 페이지"). 사용자가 실제로 쓰면 promote가
+    카탈로그로 진입시킨다. 카탈로그와 형제라 같은 CatalogStore로 다루되(디렉토리만
+    다름) 위치가 곧 상태 구분이다(ownership이 필드로 관계를 가르는 것과 같은 정신).
+    """
+    return global_root() / "sources"
 
 
 def sets_dir() -> Path:
