@@ -57,3 +57,15 @@ def test_search_by_ownership(store: CatalogStore) -> None:
     )
     hits = store.search(ownership=Ownership.LINKED)
     assert {e.id for e in hits} == {"linked-one"}
+
+
+def test_delete_removes_entry(store: CatalogStore) -> None:
+    # migrate(강등)는 진짜 이동이라 카탈로그에서 지워야 한다 — drop과 다른 지점.
+    store.save(_owned("gone"))
+    assert store.delete("gone") is True
+    assert store.get("gone") is None
+
+
+def test_delete_missing_returns_false(store: CatalogStore) -> None:
+    # 없는 걸 지우려 하면 조용히 False(멱등 — 재실행해도 터지지 않는다).
+    assert store.delete("ghost") is False

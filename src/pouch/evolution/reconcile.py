@@ -36,3 +36,23 @@ def promote_candidates(
         for entry_id in stats
         if entry_id in source_ids and entry_id not in catalog_ids
     )
+
+
+def demote_candidates(
+    stats: dict[str, UsageStat],
+    *,
+    catalog_ids: set[str],
+) -> list[str]:
+    """카탈로그에서 소스로 강등할 후보 id를 고른다(정렬된 결정적 순서).
+
+    promote_candidates의 거울상: 진입이 "쓴 것을 소스→카탈로그"라면 강등은
+    "안 쓴 것을 카탈로그→소스"다. 조건: 카탈로그에 있고(catalog_ids) + 사용 기록에
+    없음(not in stats). 옛 import가 실사용과 무관하게 직행시킨 잉여(194)를 관문 뒤로
+    되돌리는 선택.
+
+    stats는 canonicalize를 거쳤다고 가정한다 — 런타임 별칭(plugin_<플러그인>_<도구>)이
+    정식 id로 접혀야 "exa를 썼다"가 카탈로그 exa에 닿아 잘못된 강등을 막는다(reconcile과
+    같은 방어). 신호 없는 종류(훅·규칙·에이전트) 제외는 여기 안 한다 — has_usage_signal은
+    카탈로그 엔트리를 봐야 하므로 IO를 쥔 migrate에서 건다(drop이 그러듯 순수성 유지).
+    """
+    return sorted(entry_id for entry_id in catalog_ids if entry_id not in stats)

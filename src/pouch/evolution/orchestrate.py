@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pouch.catalog.demote import demote
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, alias_map
 from pouch.catalog.promote import promote
@@ -21,9 +22,14 @@ from pouch.catalog.uninstall import uninstall_entry
 from pouch.evolution.advice import Advice, plan_advice
 from pouch.evolution.aggregate import canonicalize_stats
 from pouch.evolution.attach import AttachCandidate, attach_candidates
-from pouch.evolution.candidates import DropCandidate, EvolveConfig, drop_candidates
+from pouch.evolution.candidates import (
+    DropCandidate,
+    EvolveConfig,
+    drop_candidates,
+    has_usage_signal,
+)
 from pouch.evolution.compaction import compact, full_stats
-from pouch.evolution.reconcile import promote_candidates
+from pouch.evolution.reconcile import demote_candidates, promote_candidates
 from pouch.evolution.state import active_entries, mark_dropped
 from pouch.evolution.summary import load_summary, save_summary
 from pouch.evolution.usage_log import read_events, rewrite_events
@@ -147,6 +153,45 @@ def reconcile(
         if promote(entry_id, source_store=source_store, catalog_store=catalog_store):
             promoted.append(entry_id)
     return promoted
+
+
+def migrate(
+    *,
+    source_store: CatalogStore,
+    catalog_store: CatalogStore,
+    usage_path: Path | None = None,
+    summary_path: Path | None = None,
+) -> list[str]:
+    """안 쓰는 카탈로그 도구를 소스로 강등한다(reconcile의 거울상).
+
+    옛 import가 실사용과 무관하게 카탈로그에 직행시킨 잉여(194)를 관문 뒤 소스로
+    되돌리는 통로. 두 방어를 여기서 건다:
+
+    canonicalize — usage는 런타임 별칭(plugin_<플러그인>_<도구>)으로 찍히는데
+    카탈로그 id는 정식 id라, 안 접으면 "exa를 썼다"가 카탈로그 exa에 안 닿아
+    쓰던 도구를 잘못 강등한다. reconcile과 같은 alias_map·full_stats를 쓴다.
+
+    has_usage_signal — demote_candidates는 "카탈로그에 있고 stats에 없음"을 다
+    고르는데, 훅·규칙·에이전트는 신호가 아예 안 찍혀 항상 "안 씀"으로 보인다.
+    이들을 강등하면 안 되므로(신호 없음 ≠ 안 쓰임) 신호 종류만 남긴다(drop과 같은
+    방어). 순수 선택엔 카탈로그 엔트리가 없어 판별 못 하니 IO를 쥔 여기서 건다.
+
+    강등한 id 목록을 반환한다(무엇이 내려갔는지 보고용).
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    catalog_entries = list(catalog_store.list())
+    source_entries = list(source_store.list())
+    mapping = alias_map(source_entries + catalog_entries)
+    stats = canonicalize_stats(full_stats(summary, events), mapping)
+
+    signal_ids = {e.id for e in catalog_entries if has_usage_signal(e)}
+    candidates = demote_candidates(stats, catalog_ids=signal_ids)
+    demoted: list[str] = []
+    for entry_id in candidates:
+        if demote(entry_id, source_store=source_store, catalog_store=catalog_store):
+            demoted.append(entry_id)
+    return demoted
 
 
 def apply_drop(

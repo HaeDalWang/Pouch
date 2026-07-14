@@ -27,6 +27,18 @@ class CatalogStore:
             return None
         return ToolEntry.from_markdown(path.read_text(encoding="utf-8"))
 
+    def delete(self, entry_id: str) -> bool:
+        """항목 파일을 지운다. 있었으면 True, 없었으면 False(멱등).
+
+        drop은 카탈로그를 안 건드리지만("떨어진다≠삭제된다") migrate(강등)는 진짜
+        이동이라 원본을 지워야 한다 — 지우는 쪽은 demote가 소스로 옮긴 뒤 호출한다.
+        """
+        path = self._dir / f"{entry_id}.md"
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
+
     def list(self) -> Iterator[ToolEntry]:
         if not self._dir.exists():
             return
