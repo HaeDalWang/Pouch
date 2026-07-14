@@ -86,6 +86,17 @@ def proposals_ledger_path() -> Path:
     return global_root() / "proposals.json"
 
 
+def anchor_path() -> Path:
+    """정렬 앵커 사이드카(`~/.pouch/anchor.json`).
+
+    "이번 작업 목표" 한 줄을 고정하는 자리. 세션 개념이 없으므로 단일 앵커이며,
+    매 작업 시작에 에이전트가 checkpoint set으로 덮어쓴다. proposals.json과 같은
+    정신 — 카탈로그와 분리된, 버려도 되는 라이프사이클 레이어. compaction으로
+    목표가 흐려져도 이 사이드카가 ◆목표 슬롯의 재해석 없는 고정점이 된다.
+    """
+    return global_root() / "anchor.json"
+
+
 def backup_dir() -> Path:
     """로컬 백업 목적지(`~/pouch-backups/`). `POUCH_BACKUP_DIR`로 오버라이드 가능.
 
