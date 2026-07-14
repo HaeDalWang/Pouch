@@ -13,6 +13,7 @@ from pouch import __version__
 from pouch.backup.commands import backup as backup_command
 from pouch.backup.commands import restore as restore_command
 from pouch.catalog.commands import app as catalog_app
+from pouch.checkpoint.commands import app as checkpoint_app
 from pouch.evolution.commands import app as evolve_app
 from pouch.hooks.commands import app as hook_app
 from pouch.init.commands import init as init_command
@@ -31,6 +32,7 @@ app.add_typer(memory_app, name="memory", help="🧠 메모리 — 쓸수록 쌓�
 app.add_typer(catalog_app, name="catalog", help="📦 catalog — 주머니에 담을 수 있는 것의 레지스트리.")
 app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리.")
 app.add_typer(evolve_app, name="evolve", help="🌊 evolve — 쓸수록 손에 맞게, 안 쓰는 건 정리.")
+app.add_typer(checkpoint_app, name="checkpoint", help="🎯 정렬 체크포인트 — 이번 작업 목표를 고정한다.")
 app.add_typer(sets_app, name="set", help="🎒 set — 미리 꾸려진 한 벌(시작 세트).")
 app.command(name="init", help="🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다.")(init_command)
 app.command(name="backup", help="💾 전역 주머니를 아카이브로 백업한다.")(backup_command)

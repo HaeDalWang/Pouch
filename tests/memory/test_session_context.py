@@ -84,9 +84,49 @@ def test_contract3b_fixed_failure_blocks_note_escape() -> None:
 
 
 def test_contract4_default_note_zone_is_silent() -> None:
-    # 쪽지 생산자를 안 주면(현재 기본) 고정 구역만 — 기존 동작과 동일(글자 0 침묵)
-    from pouch.memory.context import render_context
-
+    # 쪽지 생산자를 안 주면(현재 기본) 고정 구역만 — 쪽지 흔적(구분선) 없음
     out = render_session_context([_boundary()])
 
-    assert out == render_context([_boundary()])
+    assert "force push 금지" in out  # 고정 구역(boundary)은 나온다
+    assert "---" not in out  # 쪽지 구역 흔적 없음
+
+
+def test_checkpoint_protocol_always_in_fixed_zone() -> None:
+    # 체크포인트 규약은 앵커·기억 유무와 무관하게 항상 고정 구역에 실린다(기능 핵심).
+    from pouch.checkpoint.anchor import Anchor
+
+    # 기억이 0개여도 규약은 주입된다
+    empty = render_session_context([])
+    assert "정렬 체크포인트" in empty
+    assert "◆ 목표:" in empty
+
+    # 앵커가 있으면 그 목표가 규약에 박힌다
+    with_anchor = render_session_context(
+        [], anchor=Anchor(goal="my-goal", set_at="2026-07-14T00:00:00")
+    )
+    assert "my-goal" in with_anchor
+
+
+def test_checkpoint_below_boundary_above_memory() -> None:
+    # 배치: 경계(안전 최우선) → 체크포인트 규약 → 기억 인덱스
+    user = MemoryEntry(
+        name="prefers-uv",
+        description="파이썬은 uv",
+        body="본문",
+        type=MemoryType.USER,
+        scope=MemoryScope.GLOBAL,
+        created=date(2026, 7, 9),
+    )
+    out = render_session_context([_boundary(), user])
+
+    assert out.index("자율성 경계") < out.index("정렬 체크포인트")
+    assert out.index("정렬 체크포인트") < out.index("prefers-uv")
+
+
+def test_checkpoint_note_failure_still_preserves_checkpoint() -> None:
+    # 쪽지가 터져도 체크포인트 규약(고정 구역)은 그대로 나온다(격리)
+    def _boom() -> str:
+        raise RuntimeError("쪽지 터짐")
+
+    out = render_session_context([], note_zone=_boom)
+    assert "정렬 체크포인트" in out

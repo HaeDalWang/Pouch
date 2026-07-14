@@ -183,6 +183,7 @@ def context() -> None:
     """
     from datetime import datetime
 
+    from pouch.checkpoint.anchor import load_anchor
     from pouch.evolution.session_nudge import build_session_note, gather_nudge_summary
 
     now = datetime.now().isoformat(timespec="seconds")
@@ -190,6 +191,8 @@ def context() -> None:
     def _note_zone() -> str:
         return build_session_note(gather_nudge_summary(now=now), now=now)
 
-    text = render_session_context(_store().list(), note_zone=_note_zone)
+    text = render_session_context(
+        _store().list(), anchor=load_anchor(), note_zone=_note_zone
+    )
     if text:
         typer.echo(text, nl=False)

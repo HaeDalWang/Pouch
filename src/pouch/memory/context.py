@@ -12,28 +12,37 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from pouch.checkpoint.anchor import Anchor
+from pouch.checkpoint.render import render_checkpoint_protocol
 from pouch.memory.model import MemoryEntry, MemoryScope, MemoryType
 
 
 def render_session_context(
     entries: Iterable[MemoryEntry],
     *,
+    anchor: Anchor | None = None,
     note_zone: Callable[[], str] | None = None,
 ) -> str:
     """SessionStart 통로 전체 — 고정 구역(반드시 읽음) + 쪽지 구역(무시 가능).
 
-    가르는 축은 churn이 아니라 "반드시 읽어야 함 vs 무시돼도 됨". boundary·기억
-    인덱스는 고정 구역(위), 먼저 내미는 제안 쪽지는 쪽지 구역(아래, 조건부).
+    가르는 축은 churn이 아니라 "반드시 읽어야 함 vs 무시돼도 됨". boundary·정렬
+    체크포인트 규약·기억 인덱스는 고정 구역(위), 먼저 내미는 제안 쪽지는 쪽지
+    구역(아래, 조건부).
+
+    체크포인트 규약은 앵커 유무·기억 유무와 무관하게 항상 고정 구역에 실린다
+    (기능의 핵심 — 기억이 0개여도 "갈림길에서 방향 맞추기" 지침은 주입돼야 한다).
+    경계와 기억 인덱스 사이에 끼운다(안전 경계가 최상단을 유지, 규약은 그 아래).
 
     격리 불변식 — 한 구현으로 ①+③ 동시 만족:
-      먼저 고정 구역을 완전히 렌더·확정한다(entries 소비가 여기서 일어나므로,
-      고정 구역이 터지면 쪽지 로직에 닿기도 전에 시끄럽게 실패한다 — 가드레일
-      없는 제안-only 컨텍스트가 새어나가는 것을 막는 비대칭 ③b).
+      먼저 고정 구역을 완전히 렌더·확정한다(entries 소비·규약 렌더가 여기서
+      일어나므로, 고정 구역이 터지면 쪽지 로직에 닿기도 전에 시끄럽게 실패한다 —
+      가드레일 없는 제안-only 컨텍스트가 새어나가는 것을 막는 비대칭 ③b).
       그다음 쪽지를 격리된 try 안에서 시도한다(터져도 고정 구역은 이미 나갔으니
       생존 ③a, 위로도 못 옴 ①). note_zone이 None이거나 빈 내용이면 쪽지 구역은
       아예 안 그려진다(문턱 미달 = 글자 0, 구분선조차 없음 ②).
     """
-    fixed = render_context(entries)  # 고정 구역 먼저 — 실패는 여기서 전파(③b)
+    # 고정 구역 먼저 — 실패는 여기서 전파(③b). 규약은 entries 유무와 독립 주입.
+    fixed = render_context(entries, extra_fixed=render_checkpoint_protocol(anchor))
     if note_zone is None:
         return fixed
 
@@ -49,10 +58,19 @@ def render_session_context(
     return fixed.rstrip() + "\n\n---\n\n" + note.strip() + "\n"
 
 
-def render_context(entries: Iterable[MemoryEntry]) -> str:
-    """주입용 마크다운을 만든다. 기억이 없으면 빈 문자열(주입 생략)."""
+def render_context(
+    entries: Iterable[MemoryEntry],
+    *,
+    extra_fixed: list[str] | None = None,
+) -> str:
+    """주입용 마크다운을 만든다. 기억도 extra_fixed도 없으면 빈 문자열(주입 생략).
+
+    extra_fixed는 경계와 기억 인덱스 사이에 끼우는 고정 구역 줄들이다(정렬 체크포인트
+    규약 등). 기억이 0개여도 extra_fixed가 있으면 헤더와 함께 주입된다 — 규약이
+    기억 유무와 독립적으로 실려야 하기 때문이다.
+    """
     ordered = list(entries)
-    if not ordered:
+    if not ordered and not extra_fixed:
         return ""
 
     boundaries = sorted(
@@ -70,6 +88,8 @@ def render_context(entries: Iterable[MemoryEntry]) -> str:
     ]
     if boundaries:
         lines.extend(_render_boundaries(boundaries))
+    if extra_fixed:
+        lines.extend(extra_fixed)
     lines.extend(_render_scoped(others))
     return "\n".join(lines).rstrip() + "\n"
 
