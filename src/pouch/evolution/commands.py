@@ -33,6 +33,7 @@ from pouch.evolution.orchestrate import (
     plan_attach,
     plan_evolution,
     plan_plugin_advice,
+    reconcile,
     run_compaction,
 )
 from pouch.evolution.preview import preview_attach, preview_drop
@@ -108,6 +109,19 @@ def evolve(
         folded = run_compaction(now=now, after_days=DEFAULT_COMPACT_AFTER_DAYS)
         if folded:
             console.print(f"🧾 오래된 사용 기록 {folded}줄을 요약으로 접었어요(습관은 보존).\n")
+
+        # 관문 (다): 실사용이 소스 스테이징을 카탈로그로 진입시킨다. 계획보다
+        # 먼저 돌려야 새로 담긴 도구가 이후 조언·추천에 잡힌다(상태 변경이라 dry-run 제외).
+        entered = reconcile(
+            source_store=CatalogStore(catalog_dir=paths.sources_dir()),
+            catalog_store=store,
+        )
+        if entered:
+            joined = ", ".join(entered)
+            console.print(
+                f"📥 실제로 쓴 도구 {len(entered)}개가 카탈로그에 진입했어요: "
+                f"[cyan]{joined}[/cyan]\n"
+            )
 
     memory_store = MemoryStore()
     # 신호 없는 종류(훅·규칙·에이전트)는 "안 쓰임"을 판별할 수 없어 후보에서 뺀다.

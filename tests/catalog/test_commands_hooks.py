@@ -59,7 +59,9 @@ def _wired_commands(event: str) -> list[str]:
 def test_contract1_import_standalone_hooks_json(tmp_path: Path) -> None:
     _import_hooks_file(tmp_path)
 
-    result = runner.invoke(app, ["catalog", "list"])
+    # 관문 (다): import는 소스로 담는다. 훅은 usage 신호가 없어 실사용 진입 경로가
+    # 없으므로(정정 3) 소스에 남아 --sources·명시 install로만 보인다(올바른 경계).
+    result = runner.invoke(app, ["catalog", "list", "--sources"])
     assert "pre-bash-check" in result.stdout
 
 

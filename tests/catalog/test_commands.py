@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from pouch import paths
 from pouch.catalog.commands import classify_source, find_plugin_roots
 from pouch.catalog.model import Overlay, Ownership
 from pouch.catalog.store import CatalogStore
@@ -26,6 +27,11 @@ from pouch.cli import app
 runner = CliRunner()
 
 _SKILL_MD = "---\nname: aws-iam\ndescription: IAM 절차\n---\n\n# AWS IAM\n\nBODY\n"
+
+
+def _sources() -> CatalogStore:
+    """소스 스테이징 스토어 — 관문 (다) 이후 import는 여기로 담긴다(카탈로그 아님)."""
+    return CatalogStore(catalog_dir=paths.sources_dir())
 
 
 @pytest.fixture
@@ -128,7 +134,9 @@ def test_import_marketplace_dir_discovers_single_plugin(tmp_path: Path) -> None:
     result = runner.invoke(app, ["catalog", "import", str(mkt)])
 
     assert result.exit_code == 0
-    assert CatalogStore().get("aws-core-mcp") is not None
+    # 관문 (다): import는 소스로 담고 카탈로그엔 진입 안 시킨다.
+    assert _sources().get("aws-core-mcp") is not None
+    assert CatalogStore().get("aws-core-mcp") is None
 
 
 def test_import_marketplace_dir_with_many_plugins_asks_to_pick(tmp_path: Path) -> None:
@@ -147,16 +155,19 @@ def test_contract2_import_skill_defaults_to_vendored(skill_file: Path) -> None:
     result = runner.invoke(app, ["catalog", "import", str(skill_file)])
 
     assert result.exit_code == 0
-    entry = CatalogStore().get("aws-iam")
+    # 관문 (다): 소스로 담긴다(카탈로그 진입은 실사용·install이 시킨다).
+    entry = _sources().get("aws-iam")
     assert entry is not None
     assert entry.ownership is Ownership.VENDORED
     assert entry.upstream == str(skill_file)
+    assert CatalogStore().get("aws-iam") is None
 
 
 def test_contract3_import_own_adopts_and_refuses_overwrite(skill_file: Path) -> None:
     first = runner.invoke(app, ["catalog", "import", str(skill_file), "--own"])
     assert first.exit_code == 0
-    entry = CatalogStore().get("aws-iam")
+    # 관문 (다): --own도 소스로 담긴다. 재입양 거부(force 계약)는 소스 기준으로 성립.
+    entry = _sources().get("aws-iam")
     assert entry is not None and entry.ownership is Ownership.OWNED
     assert entry.body and "BODY" in entry.body
 
@@ -173,13 +184,16 @@ def test_contract4_import_plugin_decomposes(plugin_dir: Path) -> None:
     result = runner.invoke(app, ["catalog", "import", str(plugin_dir)])
 
     assert result.exit_code == 0
-    store = CatalogStore()
+    # 관문 (다): 번들은 원자로 분해되어 소스로 담긴다(카탈로그 진입 0 = 201 폭발 방지).
+    store = _sources()
     mcp = store.get("aws-mcp")
     skill = store.get("aws-iam")
     assert mcp is not None and mcp.ownership is Ownership.LINKED
     # 이 fixture는 manifest(plugin.json)가 없는 스킬 폴더 → 사용자 소유(vendored).
     # 진짜 플러그인(manifest 有)은 관측 스텁이 된다(test_importer_plugin.py가 커버).
     assert skill is not None and skill.ownership is Ownership.VENDORED
+    # 아무것도 카탈로그에 안 넘쳤다(비기술직군 import 한 번 시뮬레이션).
+    assert list(CatalogStore().list()) == []
 
 
 def test_import_with_tags(skill_file: Path) -> None:
@@ -188,7 +202,7 @@ def test_import_with_tags(skill_file: Path) -> None:
     )
 
     assert result.exit_code == 0
-    entry = CatalogStore().get("aws-iam")
+    entry = _sources().get("aws-iam")
     assert entry is not None and set(entry.tags) == {"stack:aws", "iam"}
 
 
@@ -202,7 +216,7 @@ def test_import_plugin_with_broken_skill_warns_and_continues(plugin_dir: Path) -
 
     assert result.exit_code == 0  # 성한 조각은 담겼으니 성공
     assert "broken-skill" in result.output  # 뭘 건너뛰었는지 보인다
-    store = CatalogStore()
+    store = _sources()
     assert store.get("aws-iam") is not None
     assert store.get("broken-skill") is None
 
@@ -224,12 +238,32 @@ def test_import_single_skill_missing_name_fails_clearly(tmp_path: Path) -> None:
 
 
 def test_contract5_list_shows_entries_and_surface(skill_file: Path, tmp_path: Path) -> None:
+    # 관문 (다): import만으론 카탈로그가 빈다 — install(진입)해야 list에 뜬다.
     runner.invoke(app, ["catalog", "import", str(skill_file)])
+    runner.invoke(
+        app,
+        ["catalog", "install", "aws-iam", "--skills-dir", str(tmp_path / "skills"),
+         "--mcp-config", str(tmp_path / ".mcp.json")],
+    )
 
     listed = runner.invoke(app, ["catalog", "list"])
     assert listed.exit_code == 0
     assert "aws-iam" in listed.output
     assert "vendored" in listed.output
+
+
+def test_import_then_list_catalog_is_empty_but_sources_shows(skill_file: Path) -> None:
+    # 관문 (다)의 핵심 계약: import 직후 카탈로그는 비고, --sources로만 보인다.
+    runner.invoke(app, ["catalog", "import", str(skill_file)])
+
+    catalog = runner.invoke(app, ["catalog", "list"])
+    assert catalog.exit_code == 0
+    assert "비어" in catalog.output  # 카탈로그는 안 넘침
+    assert "소스" in catalog.output  # 소스에 재워져 있다고 안내
+
+    sources = runner.invoke(app, ["catalog", "list", "--sources"])
+    assert sources.exit_code == 0
+    assert "aws-iam" in sources.output
 
 
 def test_list_empty_catalog_guides(tmp_path: Path) -> None:
@@ -283,7 +317,8 @@ def test_install_promotes_recommended_boundary_with_vendored_source(
     from pouch.memory.model import Direction, MemoryScope, MemoryType
 
     runner.invoke(app, ["catalog", "import", str(skill_file)])
-    store = CatalogStore()
+    # 관문 (다): 권장 boundary는 소스 엔트리에 붙는다 — install이 promote하며 승격.
+    store = _sources()
     entry = store.get("aws-iam")
     store.save(
         replace(
@@ -342,7 +377,7 @@ def test_install_does_not_overwrite_existing_boundary(
     )
 
     runner.invoke(app, ["catalog", "import", str(skill_file)])
-    store = CatalogStore()
+    store = _sources()  # 관문 (다): 권장 boundary는 소스 엔트리에 붙는다
     store.save(
         replace(
             store.get("aws-iam"),
@@ -371,8 +406,16 @@ def test_install_does_not_overwrite_existing_boundary(
 # ── ⑧ sync ───────────────────────────────────────────────────────────
 
 
-def test_contract8_sync_refreshes_vendored_and_keeps_overlay(skill_file: Path) -> None:
+def test_contract8_sync_refreshes_vendored_and_keeps_overlay(
+    skill_file: Path, tmp_path: Path
+) -> None:
+    # 관문 (다): sync는 카탈로그(진입한 것)를 신선하게 유지한다 → install로 진입 먼저.
     runner.invoke(app, ["catalog", "import", str(skill_file)])
+    runner.invoke(
+        app,
+        ["catalog", "install", "aws-iam", "--skills-dir", str(tmp_path / "skills"),
+         "--mcp-config", str(tmp_path / ".mcp.json")],
+    )
     store = CatalogStore()
     from pouch.catalog.importer import apply_overlay
 
@@ -411,6 +454,13 @@ def test_sync_reports_move_boundary_flag_and_loss(tmp_path: Path) -> None:
     goner.write_text("---\nname: gone-skill\ndescription: d\n---\n", encoding="utf-8")
     runner.invoke(app, ["catalog", "import", str(mover)])
     runner.invoke(app, ["catalog", "import", str(goner)])
+    # 관문 (다): sync는 카탈로그 대상 → 두 스킬을 install로 진입시킨 뒤 sync.
+    for name in ("aws-iam", "gone-skill"):
+        runner.invoke(
+            app,
+            ["catalog", "install", name, "--skills-dir", str(tmp_path / "skills"),
+             "--mcp-config", str(tmp_path / ".mcp.json")],
+        )
     apply_overlay(CatalogStore(), "aws-iam", Overlay(boundaries=("prod-gate",)))
 
     _versioned_skill("1.1.0", "aws-iam")

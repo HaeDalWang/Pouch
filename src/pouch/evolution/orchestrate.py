@@ -15,6 +15,7 @@ from pathlib import Path
 
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, alias_map
+from pouch.catalog.promote import promote
 from pouch.catalog.store import CatalogStore
 from pouch.catalog.uninstall import uninstall_entry
 from pouch.evolution.advice import Advice, plan_advice
@@ -22,6 +23,7 @@ from pouch.evolution.aggregate import canonicalize_stats
 from pouch.evolution.attach import AttachCandidate, attach_candidates
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, drop_candidates
 from pouch.evolution.compaction import compact, full_stats
+from pouch.evolution.reconcile import promote_candidates
 from pouch.evolution.state import active_entries, mark_dropped
 from pouch.evolution.summary import load_summary, save_summary
 from pouch.evolution.usage_log import read_events, rewrite_events
@@ -110,6 +112,41 @@ def plan_plugin_advice(
     entries = list(store.list())
     stats = canonicalize_stats(full_stats(summary, events), alias_map(entries))
     return plan_advice(entries, stats, now=now, stale_days=config.stale_days)
+
+
+def reconcile(
+    *,
+    source_store: CatalogStore,
+    catalog_store: CatalogStore,
+    usage_path: Path | None = None,
+    summary_path: Path | None = None,
+) -> list[str]:
+    """실사용을 소스→카탈로그 진입으로 적용한다(관문 (다)의 실사용 트리거).
+
+    import가 소스에만 재워둔 도구를 사용자가 실제로 쓰면 카탈로그로 진입시킨다.
+    별칭 접기는 카탈로그·소스 양쪽 엔트리로 만든다 — usage는 런타임 별칭
+    (plugin_<플러그인>_<도구>)으로 찍히는데 소스 id는 정식 id라, 안 접으면
+    안 맞아 진입이 안 걸린다. full_stats로 접힌 옛 사용도 인정한다(단조 진입).
+
+    진입한 id 목록을 반환한다(무엇이 새로 담겼는지 보고용).
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    source_entries = list(source_store.list())
+    catalog_entries = list(catalog_store.list())
+    mapping = alias_map(source_entries + catalog_entries)
+    stats = canonicalize_stats(full_stats(summary, events), mapping)
+
+    candidates = promote_candidates(
+        stats,
+        source_ids={e.id for e in source_entries},
+        catalog_ids={e.id for e in catalog_entries},
+    )
+    promoted: list[str] = []
+    for entry_id in candidates:
+        if promote(entry_id, source_store=source_store, catalog_store=catalog_store):
+            promoted.append(entry_id)
+    return promoted
 
 
 def apply_drop(

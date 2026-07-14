@@ -28,6 +28,7 @@ from pouch.catalog.importer import (
 from pouch.catalog.boundary import recommended_boundary_memories
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
+from pouch.catalog.promote import promote
 from pouch.catalog.store import CatalogStore
 from pouch.memory.store import MemoryStore
 from pouch.catalog.sync import SyncReport, moved_component, sync_all
@@ -145,7 +146,10 @@ def import_source(
         console.print(f"[red]✗[/red] 경로가 없습니다: {path}")
         raise typer.Exit(code=1)
 
-    store = CatalogStore()
+    # 관문 (다): import는 소스 스테이징에만 담는다 — 카탈로그 진입 0개.
+    # 사용자가 실제로 쓰거나(evolve의 reconcile) install/세트로 명시하면 그때
+    # 카탈로그로 진입한다. 여기서 전량 자동 등록만 끊는다("판단"이 아니라).
+    store = CatalogStore(catalog_dir=paths.sources_dir())
     tags = tuple(tag)
     try:
         kind, path = _classify_or_discover(path)
@@ -156,10 +160,13 @@ def import_source(
 
     for skip in result.skipped:
         console.print(f"[yellow]![/yellow] 건너뜀: {skip.reason}")
-    console.print(f"[green]✓[/green] {len(result.entries)}개 항목을 카탈로그에 담았습니다:")
+    console.print(
+        f"[green]✓[/green] {len(result.entries)}개 항목을 소스로 담았습니다 "
+        "[dim](쓰거나 install하면 카탈로그로 진입)[/dim]:"
+    )
     for entry in result.entries:
         console.print(f"  • [cyan]{entry.id}[/cyan] ({entry.ownership.value})")
-    console.print("   설치: [cyan]pouch catalog install <id>[/cyan]")
+    console.print("   지금 올리기: [cyan]pouch catalog install <id>[/cyan]")
 
 
 def _run_import(
@@ -197,12 +204,31 @@ def _run_import(
 
 
 @app.command("list")
-def list_entries() -> None:
-    """카탈로그 항목과 표면 상태(설치 여부)를 보여준다."""
+def list_entries(
+    sources: bool = typer.Option(
+        False, "--sources", help="진입 전 소스 스테이징에 재워둔 것을 보여준다."
+    ),
+) -> None:
+    """카탈로그 항목과 표면 상태(설치 여부)를 보여준다.
+
+    --sources는 관문 (다)의 "가리키기" 칸을 연다: import했지만 아직 안 써서
+    카탈로그에 진입하지 않은 것들(백과사전에 있으나 노트엔 없는 페이지).
+    """
+    if sources:
+        _list_sources()
+        return
+
     entries = list(CatalogStore().list())
     if not entries:
+        staged = list(CatalogStore(catalog_dir=paths.sources_dir()).list())
         console.print("📦 카탈로그가 비어 있습니다.")
-        console.print("   담기: [cyan]pouch catalog import <경로>[/cyan]")
+        if staged:
+            console.print(
+                f"   소스에 {len(staged)}개가 재워져 있어요 — 쓰거나 install하면 진입합니다."
+            )
+            console.print("   보기: [cyan]pouch catalog list --sources[/cyan]")
+        else:
+            console.print("   담기: [cyan]pouch catalog import <경로>[/cyan]")
         return
 
     active = active_entries()
@@ -211,6 +237,20 @@ def list_entries() -> None:
         surface = "[green]●[/green] 표면" if entry.id in active else "[dim]○[/dim]"
         tags = f" [dim]{', '.join(entry.tags)}[/dim]" if entry.tags else ""
         console.print(f"  {surface} [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
+
+
+def _list_sources() -> None:
+    """소스 스테이징 목록 — 진입 전에 재워둔 것(카탈로그 목록엔 안 뜨는 것)."""
+    staged = list(CatalogStore(catalog_dir=paths.sources_dir()).list())
+    if not staged:
+        console.print("📚 소스에 재워둔 것이 없습니다.")
+        console.print("   담기: [cyan]pouch catalog import <경로>[/cyan]")
+        return
+    catalog_ids = {e.id for e in CatalogStore().list()}
+    console.print(f"📚 [bold]소스 스테이징[/bold] ({len(staged)}개) [dim]— 쓰면 카탈로그로 진입[/dim]\n")
+    for entry in staged:
+        entered = "[green]↑ 진입함[/green]" if entry.id in catalog_ids else "[dim]· 대기[/dim]"
+        console.print(f"  {entered} [cyan]{entry.id}[/cyan] ({entry.ownership.value})")
 
 
 def _confirm_hook_install(entry: ToolEntry, *, yes: bool) -> bool:
@@ -242,10 +282,22 @@ def install(
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 설치(훅 명령 출력은 항상 남음)."),
 ) -> None:
-    """항목을 활성 표면에 올린다 — drop된 도구의 재부착도 이 명령이다."""
-    entry = CatalogStore().get(entry_id)
+    """항목을 활성 표면에 올린다 — drop된 도구의 재부착도 이 명령이다.
+
+    관문 (다): 명시 install도 진입 트리거다. 카탈로그에 없고 소스에만 있으면
+    먼저 promote해 카탈로그로 진입시킨 뒤 표면에 올린다("일부러 골라 올림"은
+    실사용과 같은 진입 근거).
+    """
+    catalog = CatalogStore()
+    entry = catalog.get(entry_id)
     if entry is None:
-        console.print(f"[red]✗[/red] 카탈로그에 '{entry_id}'가 없습니다. [cyan]pouch catalog list[/cyan]로 확인하세요.")
+        entry = promote(
+            entry_id,
+            source_store=CatalogStore(catalog_dir=paths.sources_dir()),
+            catalog_store=catalog,
+        )
+    if entry is None:
+        console.print(f"[red]✗[/red] 카탈로그·소스에 '{entry_id}'가 없습니다. [cyan]pouch catalog list[/cyan]로 확인하세요.")
         raise typer.Exit(code=1)
     if entry.surface == SURFACE_PLUGIN:
         console.print(
