@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from pouch.catalog.model import ToolEntry, ToolKind
 from pouch.cli import app
 from pouch.evolution.usage_log import UsageEvent
-from pouch.status import build_status
+from pouch.status import HostLink, build_status, render_lines
 
 runner = CliRunner()
 
@@ -47,7 +47,7 @@ def test_contract1_counts_ownership_and_surface() -> None:
 
     status = build_status(
         memory_count=3, entries=entries, active_ids={"a"},
-        events=[], now=_NOW, hook_memory=True, hook_usage=False,
+        events=[], now=_NOW,
     )
 
     assert status.catalog_total == 3
@@ -64,7 +64,7 @@ def test_contract2_recent_window_excludes_old_events() -> None:
 
     status = build_status(
         memory_count=0, entries=[], active_ids=set(),
-        events=events, now=_NOW, hook_memory=False, hook_usage=False,
+        events=events, now=_NOW,
     )
 
     ids = [entry_id for entry_id, _count in status.recent_top]
@@ -81,7 +81,7 @@ def test_contract3_recent_top_sorted_by_count() -> None:
 
     status = build_status(
         memory_count=0, entries=[], active_ids=set(),
-        events=events, now=_NOW, hook_memory=False, hook_usage=False,
+        events=events, now=_NOW,
     )
 
     assert status.recent_top[0] == ("twice", 2)
@@ -96,7 +96,7 @@ def test_contract4_outside_pouch_is_used_but_uncataloged() -> None:
 
     status = build_status(
         memory_count=0, entries=[_vendored("in-pouch")], active_ids=set(),
-        events=events, now=_NOW, hook_memory=False, hook_usage=False,
+        events=events, now=_NOW,
     )
 
     assert status.outside_pouch == ("stranger",)
@@ -126,6 +126,33 @@ def test_contract6_bare_pouch_shows_catalog_and_usage(tmp_path: Path) -> None:
     assert "1" in result.output
 
 
+def test_contract7_hosts_block_shows_each_agent_and_blanks_file_usage() -> None:
+    # 감지된 에이전트가 각자 한 줄로 보이고, 파일 호스트(usage=None)는 사용 칸이 "—".
+    hosts = (
+        HostLink(display_name="Claude Code", memory=True, usage=True),
+        HostLink(display_name="Codex", memory=False, usage=False),
+        HostLink(display_name="Kiro", memory=True, usage=None),
+    )
+
+    status = build_status(
+        memory_count=0, entries=[], active_ids=set(), events=[], now=_NOW, hosts=hosts,
+    )
+    text = "\n".join(render_lines(status))
+
+    assert "Claude Code" in text and "Codex" in text and "Kiro" in text
+    kiro_line = next(line for line in render_lines(status) if "Kiro" in line)
+    assert "—" in kiro_line  # 파일 호스트는 사용 로깅을 못 하므로 빈칸
+
+
+def test_contract8_no_hosts_guides_install() -> None:
+    status = build_status(
+        memory_count=0, entries=[], active_ids=set(), events=[], now=_NOW, hosts=(),
+    )
+    text = "\n".join(render_lines(status))
+
+    assert "hook install" in text  # 감지된 에이전트 없으면 연결법 안내
+
+
 def test_aliased_usage_is_inside_pouch_and_canonicalized() -> None:
     # alias로 이어진 사용은 "주머니 밖"이 아니고, 정식 id로 합산돼 보인다.
     from dataclasses import replace
@@ -138,7 +165,7 @@ def test_aliased_usage_is_inside_pouch_and_canonicalized() -> None:
 
     status = build_status(
         memory_count=0, entries=[exa], active_ids=set(),
-        events=events, now=_NOW, hook_memory=False, hook_usage=False,
+        events=events, now=_NOW,
     )
 
     assert status.outside_pouch == ()
