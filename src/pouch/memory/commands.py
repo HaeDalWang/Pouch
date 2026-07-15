@@ -254,6 +254,7 @@ def _print_adoption_plan(
 
     indexed = [i for i in items if i.entry.state is MemoryState.INDEXED]
     pending = [i for i in items if i.entry.state is MemoryState.PENDING]
+    archived = [i for i in items if i.entry.state is MemoryState.ARCHIVED]
 
     if indexed:
         console.print(f"\n[bold]주입됨 INDEXED[/bold] {len(indexed)}건 — 안정 핵심")
@@ -263,6 +264,13 @@ def _print_adoption_plan(
     if pending:
         console.print(f"\n[bold]리뷰 대기 PENDING[/bold] {len(pending)}건 — 주입 안 함·recall 가능")
         for item in pending:
+            e = item.entry
+            console.print(f"  • [cyan]{e.name}[/cyan] ({e.type.value}) [{e.scope.value}]")
+    if archived:
+        console.print(
+            f"\n[bold]보관 ARCHIVED[/bold] {len(archived)}건 — 날짜 박힌 세션로그(주입 X·recall O)"
+        )
+        for item in archived:
             e = item.entry
             console.print(f"  • [cyan]{e.name}[/cyan] ({e.type.value}) [{e.scope.value}]")
     if skipped:
@@ -316,9 +324,10 @@ def adopt(
 
     backup = apply_adoption(project_root, items, disable_native=disable_native)
     injected = sum(1 for i in items if i.entry.state is MemoryState.INDEXED)
+    pending = sum(1 for i in items if i.entry.state is MemoryState.PENDING)
     console.print(
         f"\n[green]✓[/green] 이관 {len(items)}건 "
-        f"(주입 {injected} · 리뷰 대기 {len(items) - injected})"
+        f"(주입 {injected} · 리뷰 대기 {pending} · 보관 {len(items) - injected - pending})"
     )
     if disable_native:
         console.print("[green]✓[/green] 네이티브 자동로드 끔 (autoMemoryEnabled=false)")

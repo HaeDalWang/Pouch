@@ -100,7 +100,7 @@ def _maybe_offer_adopt(*, yes: bool) -> None:
     injected = sum(1 for item in items if item.entry.state is MemoryState.INDEXED)
     console.print(
         f"\n🧠 Claude 네이티브 메모리 [bold]{len(items)}[/bold]건 발견 — "
-        f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 리뷰 대기)."
+        f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 주입 안 함·recall 가능)."
     )
     if not yes and not typer.confirm(
         "지금 pouch로 넘길까요? (Claude 자동로드는 꺼집니다)", default=True
