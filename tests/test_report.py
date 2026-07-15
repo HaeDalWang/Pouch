@@ -135,6 +135,38 @@ def test_project_section_from_project_events() -> None:
     assert "로컬 전용" in out
 
 
+def test_project_splits_known_and_outside() -> None:
+    # 프로젝트 사용을 "주머니 안(등록됨)" vs "주머니 밖(담을 후보)"으로 가른다.
+    entries = [_skill("alpha")]  # 전역 카탈로그
+    events = [_ev("alpha", "2026-07-14T10:00:00")]
+    project_events = [
+        _ev("alpha", "2026-07-14T10:00:00"),  # 전역 카탈로그에 있음 → 주머니 안
+        _ev("clientsec", "2026-07-14T10:00:00"),  # 어디에도 없음 → 주머니 밖
+        _ev("clientsec", "2026-07-14T11:00:00"),
+    ]
+    report = build_report(
+        entries=entries, active_ids={"alpha"}, events=events, now=NOW, window_days=7,
+        project_events=project_events, project_name="clientA",
+        project_catalog_ids=set(),
+    )
+    assert report.project_top == (("alpha", 1),)  # 등록된 것
+    assert report.project_outside == (("clientsec", 2),)  # 담을 후보
+    out = "\n".join(render_report_lines(report))
+    assert "import --project" in out
+    assert "clientsec" in out
+
+
+def test_project_catalog_tool_is_known_not_outside() -> None:
+    # 프로젝트 카탈로그에 이미 있는 도구는 "주머니 밖"이 아니다.
+    report = build_report(
+        entries=[], active_ids=set(), events=[], now=NOW, window_days=7,
+        project_events=[_ev("clientsec", "2026-07-14T10:00:00")],
+        project_name="clientA", project_catalog_ids={"clientsec"},
+    )
+    assert report.project_top == (("clientsec", 1),)
+    assert report.project_outside == ()
+
+
 def test_no_project_events_no_section() -> None:
     entries = [_skill("alpha")]
     events = [_ev("alpha", "2026-07-14T10:00:00")]

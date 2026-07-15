@@ -33,7 +33,8 @@ class ToolkitReport:
     idle_active: tuple[str, ...]  # 표면에 있는데 창 안에 안 쓰인 신호형 도구(닳는 중)
     outside_pouch: tuple[tuple[str, int], ...]  # 카탈로그 밖인데 쓴 것 (id, count)
     project_name: str | None = None  # 현재 프로젝트 이름(맥락 개인화 레인 2a)
-    project_top: tuple[tuple[str, int], ...] = ()  # 이 프로젝트에서 많이 쓴 것 (id, count)
+    project_top: tuple[tuple[str, int], ...] = ()  # 이 프로젝트에서 쓴 것 중 카탈로그에 있는 것
+    project_outside: tuple[tuple[str, int], ...] = ()  # 이 프로젝트에서 쓰는데 어느 주머니에도 없는 것
 
 
 def build_report(
@@ -46,6 +47,7 @@ def build_report(
     top_n: int = _TOP_N,
     project_events: list[UsageEvent] | None = None,
     project_name: str | None = None,
+    project_catalog_ids: set[str] | None = None,
 ) -> ToolkitReport:
     """기간 스냅샷을 계산한다(순수 — 시계·IO 없음, now는 주입).
 
@@ -76,13 +78,19 @@ def build_report(
         )
     )
 
-    # 맥락(레인 2a): 프로젝트 로컬 로그에서 "이 프로젝트에서 많이 쓴 것". 같은 창·별칭 접기.
+    # 맥락(레인 2a): 프로젝트 로컬 로그를 "주머니 안(등록된 것)"과 "주머니 밖(담을 후보)"
+    # 으로 가른다 — 전역 리포트(most_used/outside)와 같은 구조. 아는 것 = 전역 ∪ 프로젝트 카탈로그.
     project_top: tuple[tuple[str, int], ...] = ()
+    project_outside: tuple[tuple[str, int], ...] = ()
     if project_events:
+        known = catalog_ids | (project_catalog_ids or set())
         p_recent = events_within(project_events, now=now, window_days=window_days)
         p_stats = canonicalize_stats(aggregate_usage(p_recent), aliases)
         p_ranked = sorted(p_stats.items(), key=lambda item: (-item[1].count, item[0]))
-        project_top = tuple((eid, stat.count) for eid, stat in p_ranked)[:top_n]
+        project_top = tuple((eid, stat.count) for eid, stat in p_ranked if eid in known)[:top_n]
+        project_outside = tuple(
+            (eid, stat.count) for eid, stat in p_ranked if eid not in known
+        )[:top_n]
 
     return ToolkitReport(
         window_days=window_days,
@@ -94,6 +102,7 @@ def build_report(
         outside_pouch=outside_pouch,
         project_name=project_name,
         project_top=project_top,
+        project_outside=project_outside,
     )
 
 
@@ -104,9 +113,14 @@ def gather_report(*, now: str, window_days: int) -> ToolkitReport:
     from pouch.evolution.state import active_entries
     from pouch.evolution.usage_log import read_events
 
-    # 맥락(레인 2a·P3): 프로젝트 안이면 그 repo의 로컬 사용 로그도 읽는다(로컬 전용).
+    # 맥락(레인 2a·P3): 프로젝트 안이면 그 repo의 로컬 사용 로그·카탈로그도 읽는다(로컬 전용).
     root = paths.find_project_root()
     project_events = read_events(log_path=root / ".pouch" / "usage.jsonl") if root else []
+    project_catalog_ids = (
+        {e.id for e in CatalogStore(catalog_dir=root / ".pouch" / "catalog").list()}
+        if root
+        else set()
+    )
 
     return build_report(
         entries=list(CatalogStore().list()),
@@ -116,6 +130,7 @@ def gather_report(*, now: str, window_days: int) -> ToolkitReport:
         window_days=window_days,
         project_events=project_events,
         project_name=root.name if root else None,
+        project_catalog_ids=project_catalog_ids,
     )
 
 
@@ -162,6 +177,14 @@ def render_report_lines(report: ToolkitReport) -> list[str]:
         label = report.project_name or "이 프로젝트"
         lines.append(f"\n  📁 [bold]{label}[/bold]에서 많이 쓴 것 (로컬 전용)")
         for entry_id, count in report.project_top:
+            lines.append(f"     • [cyan]{entry_id}[/cyan] {count}회")
+
+    if report.project_outside:
+        lines.append(
+            f"\n  📁 이 프로젝트에서 쓰는데 주머니 밖 {len(report.project_outside)}개"
+            " — [cyan]pouch catalog import --project[/cyan]로 담기"
+        )
+        for entry_id, count in report.project_outside:
             lines.append(f"     • [cyan]{entry_id}[/cyan] {count}회")
 
     return lines
