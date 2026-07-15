@@ -26,3 +26,6 @@ htmlcov/
 # Claude Code 로컬 권한 캐시 (개인용, 레포에 포함하지 않음)
 .claude/settings.local.json
 .claude/settings.json
+
+# pouch 프로젝트 로컬 사이드카 (맥락 개인화 P3 — 로컬 전용, 커밋/백업 안 함)
+.pouch/

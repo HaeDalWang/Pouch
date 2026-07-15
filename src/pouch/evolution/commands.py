@@ -27,7 +27,7 @@ from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, has_usage_signal
 from pouch.evolution.core_tools import core_entry_ids
-from pouch.evolution.usage_log import read_events
+from pouch.evolution.usage_log import UsageEvent, append_event, read_events
 from pouch.evolution.compaction import DEFAULT_COMPACT_AFTER_DAYS
 from pouch.evolution.advice import Advice
 from pouch.evolution.orchestrate import (
@@ -71,7 +71,14 @@ def log() -> None:
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw)
-        record_usage(payload, now=_now())
+        now = _now()
+        entry_id = record_usage(payload, now=now)  # 전역 로그
+        # P3(맥락 개인화 레인 2a): 프로젝트 안이면 그 repo의 로컬 사이드카에도 남긴다.
+        # 프로젝트 경로·맥락은 로컬 전용이라 전역 백업으로 안 샌다.
+        if entry_id is not None:
+            project_log = paths.project_usage_log_path()
+            if project_log is not None:
+                append_event(UsageEvent(entry_id=entry_id, ts=now), log_path=project_log)
     except Exception:  # noqa: BLE001
         # 추적은 절대 작업을 막지 않는다 — 무슨 일이 있어도 조용히 성공한다.
         pass
