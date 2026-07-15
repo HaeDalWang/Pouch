@@ -33,14 +33,14 @@ def test_init_saves_profile_memories(workspace: Path) -> None:
     # Act
     result = runner.invoke(
         app,
-        ["init", "--role", "개발자", "--stack", "python", "--stack", "go",
-         "--work-style", "테스트 먼저", "--yes"],
+        ["init", "--role", "인프라 하다 앱 개발로", "--stack", "python", "--stack", "go",
+         "--style", "dry", "--boundary", "프로덕션 DB엔 손대지 마", "--yes"],
     )
 
     # Assert
     assert result.exit_code == 0, result.stdout
     names = {memory.name for memory in MemoryStore().list()}
-    assert {"role", "environment", "stack", "work-style"} <= names
+    assert {"role", "environment", "stack", "style", "boundary"} <= names
 
 
 def test_init_links_hook(workspace: Path) -> None:

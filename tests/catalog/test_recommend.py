@@ -63,7 +63,7 @@ def entries(upstream_skills: dict[str, Path]) -> list[ToolEntry]:
 
 
 def test_interest_tokens_from_role_and_stacks() -> None:
-    answers = InitAnswers(role="AWS engineer", stacks=("python", "go"), work_style=None)
+    answers = InitAnswers(role="AWS engineer", stacks=("python", "go"), style=None, boundary=None)
     tokens = interest_tokens(answers)
     assert "aws" in tokens
     assert "python" in tokens
@@ -73,7 +73,7 @@ def test_interest_tokens_from_role_and_stacks() -> None:
 
 
 def test_contract1_stack_matches_by_tag_and_id(entries: list[ToolEntry]) -> None:
-    answers = InitAnswers(role="backend", stacks=("aws",), work_style=None)
+    answers = InitAnswers(role="backend", stacks=("aws",), style=None, boundary=None)
     recommended = recommend(entries, answers)
     ids = {e.id for e in recommended}
     # aws 토큰이 vendor:aws 태그와 aws-* id에 닿는다
@@ -86,7 +86,7 @@ def test_contract1_stack_matches_by_tag_and_id(entries: list[ToolEntry]) -> None
 
 def test_contract2_token_match_not_substring(entries: list[ToolEntry]) -> None:
     # "go" 스택은 go-patterns에 닿지만, "google" 같은 단어엔 안 걸려야 한다.
-    answers = InitAnswers(role="dev", stacks=("go",), work_style=None)
+    answers = InitAnswers(role="dev", stacks=("go",), style=None, boundary=None)
     recommended = recommend(entries, answers)
     ids = {e.id for e in recommended}
     assert "go-patterns" in ids
@@ -94,12 +94,12 @@ def test_contract2_token_match_not_substring(entries: list[ToolEntry]) -> None:
 
 
 def test_contract3_no_match_no_recommend(entries: list[ToolEntry]) -> None:
-    answers = InitAnswers(role="dev", stacks=("haskell",), work_style=None)
+    answers = InitAnswers(role="dev", stacks=("haskell",), style=None, boundary=None)
     assert recommend(entries, answers) == []
 
 
 def test_contract4_deterministic_sorted_unique(entries: list[ToolEntry]) -> None:
-    answers = InitAnswers(role="aws dev", stacks=("aws",), work_style=None)
+    answers = InitAnswers(role="aws dev", stacks=("aws",), style=None, boundary=None)
     recommended = recommend(entries, answers)
     ids = [e.id for e in recommended]
     assert ids == sorted(ids)
@@ -107,7 +107,7 @@ def test_contract4_deterministic_sorted_unique(entries: list[ToolEntry]) -> None
 
 
 def test_contract5_recommend_then_install(entries: list[ToolEntry], tmp_path: Path) -> None:
-    answers = InitAnswers(role="backend", stacks=("aws",), work_style=None)
+    answers = InitAnswers(role="backend", stacks=("aws",), style=None, boundary=None)
     recommended = recommend(entries, answers)
 
     skills_dir = tmp_path / "skills"
