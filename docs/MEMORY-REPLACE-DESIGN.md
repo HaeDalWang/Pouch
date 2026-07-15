@@ -124,14 +124,19 @@ Claude Code 네이티브 메모리는 **완전히 끌 수 있다**:
 ## 명령 형태 스케치
 
 ```
-pouch memory adopt [--dry-run] [--no-disable-native]
+pouch memory adopt [--from <경로>] [--dry-run] [--disable-native]
 ```
 
-- `--dry-run` : 무엇이 어디로(scope)·어떤 계층으로(INDEXED/ARCHIVED) 갈지 **미리보기만**.
-  아무것도 안 바꾼다 — `plan_*`/`apply_*` 분리 정신.
-- 기본 동작은 **네이티브도 끈다**(대체니까). 이관만 하고 싶으면 `--no-disable-native`.
-- `pouch init`/`hook install` 흐름에 자연스럽게 얹을 수 있다("네이티브 메모리 쓰던데,
-  pouch로 넘길까요?").
+- `--dry-run` : 무엇이 어디로(scope)·어떤 계층으로(INDEXED/PENDING/ARCHIVED) 갈지
+  **미리보기만**. 아무것도 안 바꾼다 — `plan_*`/`apply_*` 분리 정신.
+- **기본은 옮기기만** — 네이티브 자동로드는 **안전망으로 그대로 둔다**. 완전 대체(네이티브
+  끄기)는 `--disable-native`로 명시 선택한다.
+- **왜 기본이 옮기기만인가** — 네이티브를 끄면 §3처럼 에이전트의 *쓰기* 길까지 막힌다.
+  그 대체 길(`render_how_to_remember`)은 *주입된 지침*이라 에이전트가 따라야 작동하는
+  soft 장치다. soft 대체가 실사용으로 검증되기 전에 하드하게 끄면 "옮기고 나서 기억이
+  마른다"는 위험이 남는다. 그래서 **끄기 기본화는 쓰기 길이 검증된(또는 PostToolUse
+  하드 축적이 생긴) 다음 조각으로** 미룬다(PR #1 리뷰 합의).
+- `pouch init`도 같은 기본(옮기기만) — 다른 도구 설정을 확인 없이 끄지 않는다.
 
 ---
 

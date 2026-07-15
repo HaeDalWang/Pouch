@@ -86,8 +86,10 @@ def _maybe_offer_adopt(*, yes: bool) -> None:
     """현재 프로젝트에 Claude 네이티브 메모리가 있으면 pouch로 이관을 제안한다.
 
     없으면 조용히 지나간다(init은 관문이 아니다). 넘기면 매 세션 주입은 안정 핵심만
-    남고(project 세션로그는 리뷰 대기), 네이티브 자동로드는 꺼진다(pouch가 대체) —
-    끄는 건 .bak 백업이 있어 가역이다. CLI `pouch memory adopt`와 같은 로직을 공유한다.
+    남고(project 세션로그는 리뷰 대기), **네이티브는 안전망으로 그대로 둔다**(기본은
+    옮기기만) — 다른 도구 설정을 기본으로 끄는 건 공격적이고, 새 기억이 흘러들 쓰기
+    길이 실사용으로 검증된 뒤 별도 조각에서 끄기를 기본화한다. 완전 대체는 사용자가
+    `pouch memory adopt --disable-native`로 명시 선택. CLI adopt와 같은 로직을 공유한다.
     """
     from pouch.memory.commands import apply_adoption, gather_adoption
     from pouch.memory.model import MemoryState
@@ -103,15 +105,16 @@ def _maybe_offer_adopt(*, yes: bool) -> None:
         f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 주입 안 함·recall 가능)."
     )
     if not yes and not typer.confirm(
-        "지금 pouch로 넘길까요? (Claude 자동로드는 꺼집니다)", default=True
+        "지금 pouch로 넘길까요? (원본·Claude 자동로드는 안전망으로 그대로 둡니다)", default=True
     ):
         console.print("   나중에 [cyan]pouch memory adopt[/cyan] 로 넘길 수 있습니다.")
         return
 
-    apply_adoption(project_root, items, disable_native=True)
+    apply_adoption(project_root, items, disable_native=False)
     console.print(
-        f"[green]✓[/green] 네이티브 메모리 {len(items)}건 이관 · 자동로드 껐습니다 "
-        "([cyan]pouch memory list[/cyan]로 확인)."
+        f"[green]✓[/green] 네이티브 메모리 {len(items)}건을 pouch로 옮겼습니다 "
+        "(Claude 자동로드는 안전망으로 그대로 — 완전 대체는 "
+        "[cyan]pouch memory adopt --disable-native[/cyan])."
     )
 
 

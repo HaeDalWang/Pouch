@@ -78,8 +78,9 @@ def _seed_native_feedback(project: Path) -> None:
     )
 
 
-def test_init_offers_adopt_and_migrates_native(workspace: Path) -> None:
-    # 네이티브 메모리가 있으면 init(--yes)이 pouch로 이관하고 자동로드를 끈다.
+def test_init_offers_adopt_migrates_but_keeps_native(workspace: Path) -> None:
+    # 네이티브 메모리가 있으면 init(--yes)이 pouch로 옮긴다 — 단 네이티브는 안전망으로
+    # 그대로 둔다(기본은 옮기기만, 다른 도구 설정을 기본으로 끄지 않음).
     from pouch import paths
     from pouch.hooks.settings import is_native_memory_disabled, load_settings
 
@@ -89,7 +90,7 @@ def test_init_offers_adopt_and_migrates_native(workspace: Path) -> None:
     assert result.exit_code == 0, result.stdout
 
     assert "stop-here" in {m.name for m in MemoryStore().list()}
-    assert is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+    assert not is_native_memory_disabled(load_settings(paths.claude_settings_path()))
 
 
 def test_init_without_native_memory_is_silent(workspace: Path) -> None:
