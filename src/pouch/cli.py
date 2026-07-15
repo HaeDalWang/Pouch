@@ -41,6 +41,20 @@ app.command(name="backup", help="💾 전역 주머니를 아카이브로 백업
 app.command(name="restore", help="💾 백업 아카이브로 주머니를 되돌린다.")(restore_command)
 
 
+@app.command(name="report", help="📊 리포트 — 기간별로 뭘 쓰고 뭐가 닳는지 보여준다.")
+def _report(
+    days: int = typer.Option(7, "--days", "-d", help="집계 기간(일)."),
+) -> None:
+    """기간별 주머니 리포트(시계는 이 경계에서만 읽는다). read-only."""
+    from datetime import datetime
+
+    from pouch.report import gather_report, render_report_lines
+
+    now = datetime.now().isoformat(timespec="seconds")
+    for line in render_report_lines(gather_report(now=now, window_days=days)):
+        console.print(line)
+
+
 def _version_callback(value: bool) -> None:  # noqa: FBT001
     """`--version` 처리: 버전만 출력하고 즉시 종료."""
     if value:
