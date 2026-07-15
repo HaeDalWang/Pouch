@@ -184,4 +184,42 @@ import가 소스로 담음 [src/pouch/catalog/commands.py](../src/pouch/catalog/
 
 ---
 
+## 핵심 도구 (core tool)
+
+**쉬운 말** — 오래 걸쳐 꾸준히·많이 써서 "손에 맞은" 도구. pouch가 사용 기록에서
+스스로 알아본다(count≥10 + 처음~마지막 사용 간격≥21일). `pouch`·`pouch report`가 🪨로 표시.
+
+**왜 이 개념이 생겼나** — "쓸수록 나에게 맞춰진다"를 손이 아니라 실사용이 채우게
+하려고(개인화 학습의 첫 걸음). 핵심 도구는 잠깐 안 써도 evolve의 "내리자" 제안에서
+보호된다 — 오래 걸쳐 손이 간 도구가 한 주 공백으로 흔들리면 안 되니까(기억에서
+weight 높은 것이 위생 제안에서 빠지는 것과 같은 정신).
+
+**헷갈리기 쉬운 점** — 핵심은 **최근성이 아니라 지속**이다. 이번 주 몰아 쓴 것(burst)은
+핵심이 아니고(span이 짧다), 오래 걸쳐 써온 것이 핵심이다. 그래서 조용한 주에도 보인다.
+"많이/최근 씀"은 status의 "최근 7일" 줄이 따로 보여준다.
+
+**위치** — 판정 [src/pouch/evolution/core_tools.py](../src/pouch/evolution/core_tools.py)
+(`core_entry_ids`) · drop 보호 [src/pouch/evolution/commands.py](../src/pouch/evolution/commands.py) ·
+표시 [src/pouch/status.py](../src/pouch/status.py) · [src/pouch/report.py](../src/pouch/report.py)
+
+---
+
+## 이관 (adopt)
+
+**쉬운 말** — Claude Code의 자체 메모리(`~/.claude/projects/.../memory/`)를 pouch로
+넘겨받는 것. `pouch memory adopt`. 타입이 자리·계층을 정하고, 원본은 복사라 안 지운다.
+
+**왜 이 개념이 생겼나** — 네이티브 메모리는 생명주기가 없어 지난 세션로그까지 전부
+매 세션 주입한다. 이관은 그걸 pouch의 "안정 핵심만 주입"으로 복원하며 청소한다 —
+호스트를 가로지르는 하나의 기억 레이어로 모으는 첫 조각.
+
+**헷갈리기 쉬운 점** — 기본은 **옮기기만** 한다(네이티브는 안전망으로 남음). 네이티브를
+아예 끄는 완전 대체는 `--disable-native`로 명시 선택이다 — 끄면 에이전트의 자동 쓰기
+길도 막히므로, 주입에 심은 "`pouch memory add`로 남겨라" 지침이 그 자리를 잇는다.
+
+**위치** — [src/pouch/memory/adopt.py](../src/pouch/memory/adopt.py) ·
+설계 [MEMORY-REPLACE-DESIGN.md](MEMORY-REPLACE-DESIGN.md)
+
+---
+
 *(다음 항목은 다음에 막히는 단어에서.)*
