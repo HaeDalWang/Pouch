@@ -10,8 +10,12 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from pouch.hosts.base import HostAdapter
-from pouch.hosts.registry import adapter_names, detect_installed
+from pouch.hosts.base import FileHostAdapter, HostAdapter
+from pouch.hosts.registry import (
+    all_names,
+    detect_file_supported,
+    detect_hook_installed,
+)
 from pouch.init.detect import Environment, detect_environment
 from pouch.init.profile import InitAnswers, build_memories
 from pouch.memory.store import MemoryStore
@@ -99,40 +103,63 @@ def _maybe_link_hook(yes: bool) -> None:
     사용 기록(도구 쓸 때). 사용 기록이 빠지면 진화가 볼 데이터가 안 쌓여
     "쓸수록 진화한다"가 시작조차 못 한다 — init만 돌린 사용자에게 특히 중요.
 
-    이 머신에 설정 파일이 있는 호스트만 대상으로 삼는다(Claude·Codex·Kiro).
-    하나도 못 찾으면 조용히 안내만 남긴다 — init은 관문이 아니다.
+    이 머신에 있는 호스트만 대상으로 삼는다: 훅 호스트(Claude·Codex, 설정 폴더
+    존재)와 파일 호스트(Kiro, 전역 설치). 하나도 못 찾으면 조용히 안내만 남긴다 —
+    init은 관문이 아니다.
     """
-    adapters = detect_installed()
-    if not adapters:
-        console.print(f"   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다 ({', '.join(adapter_names())}).")
+    hooks = [a for a in detect_hook_installed() if not _hook_fully_linked(a)]
+    files = [a for a in detect_file_supported() if not a.is_linked()]
+    if not hooks and not files:
+        # 이미 다 연결됐거나, 감지된 호스트가 없거나.
+        if detect_hook_installed() or detect_file_supported():
+            console.print("[green]✓[/green] 감지된 에이전트에 이미 연결돼 있습니다.")
+        else:
+            console.print(f"   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다 ({', '.join(all_names())}).")
         return
 
-    pending = [a for a in adapters if not _adapter_fully_linked(a)]
-    if not pending:
-        console.print("[green]✓[/green] 감지된 에이전트에 이미 연결돼 있습니다.")
-        return
-
-    names = ", ".join(a.display_name for a in pending)
+    names = ", ".join(a.display_name for a in (*hooks, *files))
     if not yes and not typer.confirm(f"지금 연결할까요? ({names})", default=True):
         console.print("   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다.")
         return
 
-    for adapter in pending:
-        _link_adapter(adapter)
+    for adapter in hooks:
+        _link_hook(adapter)
+    if files:
+        body = _global_memory_body()
+        for file_adapter in files:
+            _link_file(file_adapter, body)
 
 
-def _adapter_fully_linked(adapter: HostAdapter) -> bool:
-    """두 배선이 모두 걸려 있는지."""
+def _hook_fully_linked(adapter: HostAdapter) -> bool:
+    """훅 호스트에 두 배선이 모두 걸려 있는지."""
     config = adapter.load(adapter.config_path())
     return adapter.is_memory_installed(config) and adapter.is_usage_installed(config)
 
 
-def _link_adapter(adapter: HostAdapter) -> None:
-    """한 호스트에 두 배선을 걸고 결과를 출력한다."""
+def _global_memory_body() -> str:
+    """파일 호스트에 심을 스냅샷 본문(현재 전역 기억)."""
+    from pouch.hosts.filesync import render_file_body
+
+    return render_file_body(list(MemoryStore().list()))
+
+
+def _link_hook(adapter: HostAdapter) -> None:
+    """훅 호스트에 두 배선을 걸고 결과를 출력한다."""
     path = adapter.config_path()
     config = adapter.load(path)
     updated = adapter.with_usage_installed(adapter.with_memory_installed(config))
     adapter.write(path, updated)
     console.print(f"[green]✓[/green] {adapter.display_name} 연결 완료 → {path}")
+    _print_notes(adapter)
+
+
+def _link_file(adapter: FileHostAdapter, body: str) -> None:
+    """파일 호스트에 기억 스냅샷을 심고 결과를 출력한다."""
+    adapter.link(body)
+    console.print(f"[green]✓[/green] {adapter.display_name} 연결 완료 → {adapter.content_path()}")
+    _print_notes(adapter)
+
+
+def _print_notes(adapter: HostAdapter | FileHostAdapter) -> None:
     for note in adapter.post_install_notes():
         console.print(f"   [yellow]![/yellow] {escape(note)}")

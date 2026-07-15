@@ -19,22 +19,18 @@ runner = CliRunner()
 
 @pytest.fixture
 def hosts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    # Claude·Codex 디렉토리는 만들어 둔다(탐지 대상). Kiro는 워크스페이스라 별도.
+    # Claude·Codex 디렉토리는 만들어 둔다(탐지 대상). Kiro(KIRO_HOME)는 없는 경로로
+    # 격리해 이 개발 머신의 실제 ~/.kiro steering 파일을 건드리지 않게 한다.
     claude = tmp_path / "claude"
     codex = tmp_path / "codex"
     claude.mkdir()
     codex.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
     monkeypatch.setenv("CODEX_HOME", str(codex))
-    monkeypatch.chdir(tmp_path)  # .git 없음 → Kiro 미탐지
+    monkeypatch.setenv("KIRO_HOME", str(tmp_path / "no-kiro"))
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path / "pouch"))
+    monkeypatch.chdir(tmp_path)
     return tmp_path
-
-
-def _memory_installed(path: Path, key: str = "SessionStart") -> bool:
-    if not path.exists():
-        return False
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return bool(data)
 
 
 def test_install_specific_host(hosts: Path) -> None:
@@ -80,3 +76,31 @@ def test_uninstall_specific_host(hosts: Path) -> None:
     assert result.exit_code == 0, result.stdout
     data = json.loads((hosts / "codex" / "hooks.json").read_text(encoding="utf-8"))
     assert not data.get("hooks")
+
+
+def test_install_kiro_writes_steering_file(hosts: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Kiro 전역 홈을 실재하게 만들어 파일 호스트로 감지되게 한다.
+    kiro = hosts / "kiro-home"
+    kiro.mkdir()
+    monkeypatch.setenv("KIRO_HOME", str(kiro))
+
+    result = runner.invoke(app, ["install", "--host", "kiro", "--yes"])
+    assert result.exit_code == 0, result.stdout
+    steering = kiro / "steering" / "pouch-memory.md"
+    assert steering.exists()
+    assert steering.read_text(encoding="utf-8").startswith("---\ninclusion: always\n---")
+    # 파일 호스트는 사용 로깅이 없다는 안내가 정직하게 나와야 한다.
+    assert "사용 로깅" in result.stdout
+
+
+def test_uninstall_kiro_removes_steering_file(hosts: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    kiro = hosts / "kiro-home"
+    kiro.mkdir()
+    monkeypatch.setenv("KIRO_HOME", str(kiro))
+    runner.invoke(app, ["install", "--host", "kiro", "--yes"])
+    steering = kiro / "steering" / "pouch-memory.md"
+    assert steering.exists()
+
+    result = runner.invoke(app, ["uninstall", "--host", "kiro"])
+    assert result.exit_code == 0, result.stdout
+    assert not steering.exists()

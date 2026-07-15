@@ -65,3 +65,43 @@ class HostAdapter(Protocol):
         여기에 안내 문구를 담는다. 기본은 빈 리스트(추가 조치 불필요).
         """
         ...
+
+
+@runtime_checkable
+class FileHostAdapter(Protocol):
+    """홈에 내용 스냅샷 파일을 써서 연결하는 어댑터(Kiro·Antigravity 부류).
+
+    훅 호스트와 달리 "매번 새로 읽는 명령"이 아니라 "한 번 찍어둔 사진"이다 —
+    그래서 기억이 바뀌면 파일을 다시 써야 최신이 된다(filesync.refresh_linked가
+    담당). 파일은 컨텍스트 주입만 하고 사용 로깅은 못 한다(도구 호출을 못 봄).
+
+    link()에 넘기는 body는 이미 렌더된 기억 마크다운이다. 호스트별 겉포장
+    (frontmatter 등)은 각 어댑터가 씌운다.
+    """
+
+    name: str
+    display_name: str
+
+    def is_supported(self) -> bool:
+        """이 머신에 이 에이전트가 있는지(전역 설치 신호로 판단)."""
+        ...
+
+    def content_path(self) -> Path:
+        """스냅샷 파일 경로."""
+        ...
+
+    def is_linked(self) -> bool:
+        """스냅샷 파일이 이미 존재하는지(= 연결됨)."""
+        ...
+
+    def link(self, body: str) -> Path | None:
+        """렌더된 기억 body로 스냅샷을 쓴다. 기존 파일이 있었으면 백업 경로 반환."""
+        ...
+
+    def unlink(self) -> bool:
+        """스냅샷 파일을 지운다. 실제로 지웠으면 True."""
+        ...
+
+    def post_install_notes(self) -> list[str]:
+        """설치 직후 안내(사용 로깅 불가·자동 갱신됨 등)."""
+        ...

@@ -50,6 +50,7 @@ class MemoryStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(entry.to_markdown(), encoding="utf-8")
         self._reindex(entry.scope)
+        self._sync_file_hosts(entry.scope)
         return path
 
     def get(self, name: str, scope: MemoryScope) -> MemoryEntry | None:
@@ -81,6 +82,7 @@ class MemoryStore:
             return False
         path.unlink()
         self._reindex(scope)
+        self._sync_file_hosts(scope)
         return True
 
     def list(self) -> Iterator[MemoryEntry]:
@@ -102,3 +104,17 @@ class MemoryStore:
         if not directory or not directory.exists():
             return
         write_index(directory, list(self._iter_scope(scope)))
+
+    def _sync_file_hosts(self, scope: MemoryScope) -> None:
+        """전역 기억이 바뀌면 링크된 파일 호스트 스냅샷을 다시 쓴다(낡음 자동 해소).
+
+        _reindex 옆에 나란히 두어 "파생물은 항상 최신"을 코드로 보장한다. 파일
+        호스트는 전역 기억만 담으므로 프로젝트 스코프 변경은 건너뛴다(불필요한 재기록
+        회피). 함수-지역 import로 memory→hosts 순환을 피한다. refresh_linked는
+        링크된(파일이 이미 있는) 호스트만 건드리므로 미연결 사용자에겐 무동작이다.
+        """
+        if scope is not MemoryScope.GLOBAL:
+            return
+        from pouch.hosts.filesync import refresh_linked
+
+        refresh_linked(list(self.list()))

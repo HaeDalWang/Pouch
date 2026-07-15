@@ -154,14 +154,25 @@ def codex_hooks_path() -> Path:
     return base / "hooks.json"
 
 
-def kiro_hooks_path(start: Path | None = None) -> Path:
-    """현재 프로젝트의 Kiro 훅 파일 경로(`.kiro/hooks/pouch.json`).
+def kiro_home() -> Path:
+    """Kiro 전역 루트(`~/.kiro/`) — 이 머신에 Kiro가 깔렸는지의 신호.
 
-    Kiro 훅은 워크스페이스 스코프라 프로젝트 루트 밑에 둔다(전역 always-주입은
-    steering 파일 몫 — 파일 씀 통로, 다음 판). 루트를 못 찾으면 cwd 기준.
+    `KIRO_HOME` 환경변수로 오버라이드 가능(테스트/대체 설치 위치). Kiro 앱은 홈에
+    이 디렉토리를 만든다(steering·settings·sessions 등). 프로젝트별 `.kiro/`와
+    다른, 전역 설치 표식이다.
     """
-    root = find_project_root(start) or (start or Path.cwd())
-    return root / ".kiro" / "hooks" / "pouch.json"
+    override = os.environ.get("KIRO_HOME")
+    return Path(override).expanduser() if override else Path.home() / ".kiro"
+
+
+def kiro_steering_path() -> Path:
+    """Kiro 전역 steering 파일(`~/.kiro/steering/pouch-memory.md`).
+
+    모든 워크스페이스에서 항상 읽히는 자리(inclusion: always). 그래서 여기엔
+    전역 기억만 담는다 — 프로젝트 기억을 넣으면 다른 프로젝트로 샌다. 훅과 달리
+    "한 번 찍는 사진"이라, 기억이 바뀌면 filesync가 다시 쓴다.
+    """
+    return kiro_home() / "steering" / "pouch-memory.md"
 
 
 def project_mcp_config_path(start: Path | None = None) -> Path:
