@@ -278,7 +278,11 @@ def _print_adoption_plan(
         for s in skipped:
             console.print(f"  • {Path(s.source_path).name} — [dim]{s.reason}[/dim]")
 
-    native_state = "끔 (autoMemoryEnabled=false)" if disable_native else "유지 (--no-disable-native)"
+    native_state = (
+        "끔 (autoMemoryEnabled=false · 대체 확정)"
+        if disable_native
+        else "유지 (안전망) — 완전 대체는 --disable-native"
+    )
     console.print(f"\n  네이티브 자동로드: [yellow]{native_state}[/yellow]")
 
 
@@ -293,9 +297,9 @@ def adopt(
         False, "--dry-run", help="무엇이 어디로·어떤 계층으로 갈지 미리보기만(아무것도 안 바꿈)."
     ),
     disable_native: bool = typer.Option(
-        True,
+        False,
         "--disable-native/--no-disable-native",
-        help="이관 후 네이티브 자동로드를 끈다(대체). --no-disable-native면 이관만.",
+        help="이관 후 네이티브 자동로드까지 끈다(대체 확정). 기본은 옮기기만 — 네이티브는 안전망으로 남긴다.",
     ),
 ) -> None:
     """Claude 네이티브 메모리를 pouch로 이관한다(대체 A안 §2). 원본은 안 지운다(복사).

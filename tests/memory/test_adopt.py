@@ -246,9 +246,7 @@ def _seed_native(project: Path) -> Path:
     return native
 
 
-def test_adopt_migrates_by_type_and_disables_native(workspace: Path) -> None:
-    from pouch import paths
-    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+def test_adopt_migrates_by_type(workspace: Path) -> None:
     from pouch.memory.store import MemoryStore
 
     project = workspace / "proj"
@@ -264,7 +262,27 @@ def test_adopt_migrates_by_type_and_disables_native(workspace: Path) -> None:
     assert entries["trading_scope"].state is MemoryState.PENDING
     # MEMORY.md 인덱스는 이관되지 않는다.
     assert "trading_scope" in entries and "MEMORY" not in entries
-    # 네이티브 자동로드가 꺼졌다(대체).
+
+
+def test_adopt_default_keeps_native(workspace: Path) -> None:
+    # 기본은 옮기기만 — 네이티브 자동로드는 안전망으로 남긴다(끄지 않음).
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+
+    _seed_native(workspace / "proj")
+    result = runner.invoke(app, ["adopt"])
+    assert result.exit_code == 0, result.stdout
+    assert not is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+
+
+def test_adopt_disable_native_flag_turns_off(workspace: Path) -> None:
+    # --disable-native를 명시해야 네이티브 자동로드를 끈다(대체 확정).
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+
+    _seed_native(workspace / "proj")
+    result = runner.invoke(app, ["adopt", "--disable-native"])
+    assert result.exit_code == 0, result.stdout
     assert is_native_memory_disabled(load_settings(paths.claude_settings_path()))
 
 

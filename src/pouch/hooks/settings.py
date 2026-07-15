@@ -131,7 +131,8 @@ def with_recipe_removed(settings: dict, recipe: dict) -> dict:
 
 # 네이티브 메모리 스위치 — Claude Code 기본 메모리를 끄는 settings 키.
 # false면 네이티브가 읽기·쓰기를 모두 멈춰(자동로드 주입 없음), pouch가 자리를 대체한다.
-# ⚠️ 배선 시 이 키 이름을 공식 docs로 재확인한다 — 틀리면 조용한 무동작(안 꺼짐).
+# 공식 docs 확인 완료(code.claude.com/docs/en/settings.md): boolean·default true·
+# "does not read from or write to the auto memory directory". env CLAUDE_CODE_DISABLE_AUTO_MEMORY도 동일.
 NATIVE_MEMORY_KEY = "autoMemoryEnabled"
 
 
