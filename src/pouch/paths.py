@@ -58,6 +58,17 @@ def usage_log_path() -> Path:
     return global_root() / "usage.jsonl"
 
 
+def project_usage_log_path(start: Path | None = None) -> Path | None:
+    """현재 프로젝트의 로컬 사용 로그(`<repo>/.pouch/usage.jsonl`). 프로젝트 밖이면 None.
+
+    맥락 개인화(레인 2a)의 P3 프라이버시 자리 — 프로젝트별 사용 기록은 그 repo의
+    `.pouch/`에만 남긴다(로컬 전용). 전역 백업(`~/.pouch`)엔 안 들어가므로 프로젝트
+    경로·맥락이 클라우드로 새지 않는다("프로젝트 `.pouch`는 클라우드 안 나간다"와 정렬).
+    """
+    root = find_project_root(start)
+    return (root / ".pouch" / "usage.jsonl") if root else None
+
+
 def usage_summary_path() -> Path:
     """접힌 사용 요약(`~/.pouch/usage-summary.json`).
 

@@ -120,6 +120,31 @@ def test_core_shows_even_when_window_quiet() -> None:
     assert "alpha" in out
 
 
+def test_project_section_from_project_events() -> None:
+    # 맥락(레인 2a): 프로젝트 로컬 로그로 "이 프로젝트에서 많이 쓴 것" 구역.
+    entries = [_skill("alpha"), _skill("beta")]
+    events = [_ev("alpha", "2026-07-14T10:00:00"), _ev("beta", "2026-07-14T10:00:00")]
+    project_events = [_ev("alpha", "2026-07-14T10:00:00"), _ev("alpha", "2026-07-14T11:00:00")]
+    report = build_report(
+        entries=entries, active_ids={"alpha", "beta"}, events=events, now=NOW, window_days=7,
+        project_events=project_events, project_name="myrepo",
+    )
+    assert report.project_top == (("alpha", 2),)
+    out = "\n".join(render_report_lines(report))
+    assert "myrepo" in out
+    assert "로컬 전용" in out
+
+
+def test_no_project_events_no_section() -> None:
+    entries = [_skill("alpha")]
+    events = [_ev("alpha", "2026-07-14T10:00:00")]
+    report = build_report(
+        entries=entries, active_ids={"alpha"}, events=events, now=NOW, window_days=7
+    )
+    assert report.project_top == ()
+    assert "많이 쓴 것 (로컬 전용)" not in "\n".join(render_report_lines(report))
+
+
 def test_report_cli_runs(monkeypatch, tmp_path) -> None:
     from typer.testing import CliRunner
 
