@@ -104,6 +104,22 @@ def test_render_shows_sections() -> None:
     assert "주머니 밖" in out  # stranger
 
 
+def test_core_shows_even_when_window_quiet() -> None:
+    # 핵심은 전체 이력 기준 — 이번 창(7일)이 조용해도 리포트에 먼저 인식된다.
+    entries = [_skill("alpha")]
+    # alpha: 12회·span 30일(다 7일 창 밖) → 핵심이지만 창 사용은 0.
+    events = [_ev("alpha", "2026-06-01T00:00:00"), _ev("alpha", "2026-07-01T00:00:00")]
+    events += [_ev("alpha", "2026-06-01T00:00:00") for _ in range(10)]
+    report = build_report(
+        entries=entries, active_ids={"alpha"}, events=events, now=NOW, window_days=7
+    )
+    assert report.core == ("alpha",)
+    assert report.total_uses == 0  # 창 안엔 없음
+    out = "\n".join(render_report_lines(report))
+    assert "핵심 도구" in out
+    assert "alpha" in out
+
+
 def test_report_cli_runs(monkeypatch, tmp_path) -> None:
     from typer.testing import CliRunner
 

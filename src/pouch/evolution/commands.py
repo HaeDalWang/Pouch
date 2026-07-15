@@ -22,9 +22,12 @@ from rich.console import Console
 
 from pouch import paths
 from pouch.catalog.boundary import plan_boundary_drop
+from pouch.catalog.model import alias_map
 from pouch.catalog.store import CatalogStore
 from pouch.evolution.attach import AttachCandidate
 from pouch.evolution.candidates import DropCandidate, EvolveConfig, has_usage_signal
+from pouch.evolution.core_tools import core_entry_ids
+from pouch.evolution.usage_log import read_events
 from pouch.evolution.compaction import DEFAULT_COMPACT_AFTER_DAYS
 from pouch.evolution.advice import Advice
 from pouch.evolution.orchestrate import (
@@ -124,10 +127,13 @@ def evolve(
             )
 
     memory_store = MemoryStore()
-    # 신호 없는 종류(훅·규칙·에이전트)는 "안 쓰임"을 판별할 수 없어 후보에서 뺀다.
+    # 핵심 도구(지속·빈도로 손에 맞은 것)는 drop 제안에서 보호한다 — 오래 안 봐도
+    # 안 내림(기억 weight-면역과 같은 정신, 개인화 학습 레인 1). 신호 없는 종류
+    # (훅·규칙·에이전트)는 "안 쓰임"을 판별할 수 없어 애초에 후보에서 뺀다.
+    core = core_entry_ids(read_events(), alias_map=alias_map(list(store.list())))
     drops = [
         d for d in plan_evolution(now=now, config=EvolveConfig())
-        if has_usage_signal(store.get(d.entry_id))
+        if has_usage_signal(store.get(d.entry_id)) and d.entry_id not in core
     ]
     attaches = plan_attach(now=now, store=store)
     # (A→B) plugin 관측 사용을 조언으로 — pouch가 안 바꾸고 소유자에게 안내만.

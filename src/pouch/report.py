@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pouch.catalog.model import ToolEntry, alias_map
 from pouch.evolution.aggregate import aggregate_usage, canonicalize_stats, events_within
 from pouch.evolution.candidates import has_usage_signal
+from pouch.evolution.core_tools import core_entry_ids
 from pouch.evolution.usage_log import UsageEvent
 
 _TOP_N = 5
@@ -27,6 +28,7 @@ class ToolkitReport:
     window_days: int
     total_uses: int  # 창 안 총 사용 횟수
     active_count: int  # 표면(연장통)에 올라온 카탈로그 도구 수
+    core: tuple[str, ...]  # 지속·빈도로 손에 맞은 핵심 도구(전체 이력 기준, 창 무관)
     most_used: tuple[tuple[str, int], ...]  # (id, count) — 카탈로그 도구 상위
     idle_active: tuple[str, ...]  # 표면에 있는데 창 안에 안 쓰인 신호형 도구(닳는 중)
     outside_pouch: tuple[tuple[str, int], ...]  # 카탈로그 밖인데 쓴 것 (id, count)
@@ -46,11 +48,14 @@ def build_report(
     "닳는 중"은 신호형 도구(스킬·mcp)만 센다 — 훅·규칙·에이전트는 사용 신호가 원래
     안 찍혀 "안 씀"을 판별할 수 없기 때문(evolve의 drop 방어와 같은 정신).
     """
+    aliases = alias_map(entries)
     recent = events_within(events, now=now, window_days=window_days)
-    stats = canonicalize_stats(aggregate_usage(recent), alias_map(entries))
+    stats = canonicalize_stats(aggregate_usage(recent), aliases)
     catalog_ids = {entry.id for entry in entries}
     by_id = {entry.id: entry for entry in entries}
     used_ids = set(stats)
+    # 핵심은 전체 이력(창 무관)의 지속·빈도로 — 이번 창이 조용해도 손에 맞은 도구는 핵심.
+    core = tuple(sorted(core_entry_ids(events, alias_map=aliases) & catalog_ids))
 
     ranked = sorted(stats.items(), key=lambda item: (-item[1].count, item[0]))
     most_used = tuple(
@@ -71,6 +76,7 @@ def build_report(
         window_days=window_days,
         total_uses=len(recent),
         active_count=len(active_ids & catalog_ids),
+        core=core,
         most_used=most_used,
         idle_active=idle_active,
         outside_pouch=outside_pouch,
@@ -95,6 +101,13 @@ def gather_report(*, now: str, window_days: int) -> ToolkitReport:
 def render_report_lines(report: ToolkitReport) -> list[str]:
     """스냅샷을 rich 마크업 줄들로 그린다."""
     lines = [f"🦦 [bold]pouch 리포트[/bold] — 최근 {report.window_days}일", ""]
+
+    # 핵심 도구는 전체 이력 기준이라, 이번 창이 조용해도 맨 위에 먼저 보인다.
+    if report.core:
+        lines.append(f"  🪨 [bold]핵심 도구[/bold] {len(report.core)}개 — 손에 맞은(정리에서 보호)")
+        for entry_id in report.core:
+            lines.append(f"     • [cyan]{entry_id}[/cyan]")
+        lines.append("")
 
     if report.total_uses == 0:
         lines.append("  이 기간엔 사용 기록이 없습니다.")
