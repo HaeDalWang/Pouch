@@ -130,8 +130,9 @@ Code 사용자가 둘 다 켜면 **겹치는 MEMORY.md가 두 벌** 생긴다.
 
 1. ~~**A vs B**~~ — **닫힘 → A(대체).** 근거·설계는 [MEMORY-REPLACE-DESIGN.md](MEMORY-REPLACE-DESIGN.md).
    A가 네이티브의 write 경로까지 없애서 아래 #4(자동 축적)를 "선택"에서 "필수"로 앞당긴다.
-2. **경계(boundary)를 어디까지 킬러 피처로** — 지금은 메모리의 한 타입. 별도 1급
-   개념으로 승격할지.
+2. **경계(boundary)를 어디까지 킬러 피처로** — 1급화 **A 완료**: 최상위 `pouch boundary`
+   명령(add/list/remove) 냄(→ [BOUNDARY-PROMOTION.md](BOUNDARY-PROMOTION.md)). 다음은
+   B(init 온보딩 제안). 모델·비강제 철학은 그대로.
 3. **회상 백엔드 추상화** — 키워드/시맨틱/외부(hindsight)를 갈아끼우는 인터페이스를
    지금 그을지, 나중으로 미룰지.
 4. **세션→기억 자동 축적** — 셋 다 못 푼 열린 문제. pouch가 여기서 앞설지, 아니면
