@@ -15,7 +15,11 @@ runner = CliRunner()
 
 @pytest.fixture
 def claude_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # Claude 디렉토리는 존재(탐지 대상), Codex는 없는 경로로 격리(실제 ~/.codex 오염 방지).
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no-codex"))
+    # cwd를 .git 없는 임시 위치로 옮겨 Kiro 워크스페이스 탐지도 격리한다.
+    monkeypatch.chdir(tmp_path)
     return tmp_path
 
 

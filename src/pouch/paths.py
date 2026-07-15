@@ -142,6 +142,28 @@ def claude_skills_dir() -> Path:
     return base / "skills"
 
 
+def codex_hooks_path() -> Path:
+    """Codex 훅 설정 파일 경로(`~/.codex/hooks.json`).
+
+    `CODEX_HOME` 환경변수로 오버라이드 가능(테스트/대체 설치 위치). Codex는
+    Claude Code와 훅 JSON 스키마가 같아 claude 어댑터의 순수 함수를 재사용한다 —
+    다른 건 이 경로와, 설치 후 안내(experimental 플래그·훅 신뢰 등록)뿐이다.
+    """
+    override = os.environ.get("CODEX_HOME")
+    base = Path(override).expanduser() if override else Path.home() / ".codex"
+    return base / "hooks.json"
+
+
+def kiro_hooks_path(start: Path | None = None) -> Path:
+    """현재 프로젝트의 Kiro 훅 파일 경로(`.kiro/hooks/pouch.json`).
+
+    Kiro 훅은 워크스페이스 스코프라 프로젝트 루트 밑에 둔다(전역 always-주입은
+    steering 파일 몫 — 파일 씀 통로, 다음 판). 루트를 못 찾으면 cwd 기준.
+    """
+    root = find_project_root(start) or (start or Path.cwd())
+    return root / ".kiro" / "hooks" / "pouch.json"
+
+
 def project_mcp_config_path(start: Path | None = None) -> Path:
     """현재 프로젝트의 `.mcp.json` 경로. 프로젝트 루트를 못 찾으면 cwd 기준."""
     root = find_project_root(start) or (start or Path.cwd())

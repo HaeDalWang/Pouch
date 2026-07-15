@@ -8,18 +8,12 @@ from __future__ import annotations
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
-from pouch.hooks.settings import (
-    is_installed,
-    is_usage_hook_installed,
-    load_settings,
-    with_hook_installed,
-    with_usage_hook_installed,
-    write_settings,
-)
+from pouch.hosts.base import HostAdapter
+from pouch.hosts.registry import adapter_names, detect_installed
 from pouch.init.detect import Environment, detect_environment
 from pouch.init.profile import InitAnswers, build_memories
-from pouch import paths
 from pouch.memory.store import MemoryStore
 
 console = Console()
@@ -99,19 +93,46 @@ def _print_detected(env: Environment) -> None:
 
 
 def _maybe_link_hook(yes: bool) -> None:
-    """미연결 상태면 에이전트 연결(hook)을 제안/수행한다.
+    """감지된 에이전트 전체에 연결(hook)을 제안/수행한다.
 
     `pouch hook install`과 같은 두 배선을 건다: 기억 주입(세션 시작) +
     사용 기록(도구 쓸 때). 사용 기록이 빠지면 진화가 볼 데이터가 안 쌓여
     "쓸수록 진화한다"가 시작조차 못 한다 — init만 돌린 사용자에게 특히 중요.
+
+    이 머신에 설정 파일이 있는 호스트만 대상으로 삼는다(Claude·Codex·Kiro).
+    하나도 못 찾으면 조용히 안내만 남긴다 — init은 관문이 아니다.
     """
-    path = paths.claude_settings_path()
-    settings = load_settings(path)
-    if is_installed(settings) and is_usage_hook_installed(settings):
-        console.print("[green]✓[/green] 에이전트에 이미 연결돼 있습니다.")
+    adapters = detect_installed()
+    if not adapters:
+        console.print(f"   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다 ({', '.join(adapter_names())}).")
         return
-    if not yes and not typer.confirm("지금 에이전트에 연결할까요?", default=True):
+
+    pending = [a for a in adapters if not _adapter_fully_linked(a)]
+    if not pending:
+        console.print("[green]✓[/green] 감지된 에이전트에 이미 연결돼 있습니다.")
+        return
+
+    names = ", ".join(a.display_name for a in pending)
+    if not yes and not typer.confirm(f"지금 연결할까요? ({names})", default=True):
         console.print("   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다.")
         return
-    write_settings(path, with_usage_hook_installed(with_hook_installed(settings)))
-    console.print(f"[green]✓[/green] 에이전트 연결 완료 → {path}")
+
+    for adapter in pending:
+        _link_adapter(adapter)
+
+
+def _adapter_fully_linked(adapter: HostAdapter) -> bool:
+    """두 배선이 모두 걸려 있는지."""
+    config = adapter.load(adapter.config_path())
+    return adapter.is_memory_installed(config) and adapter.is_usage_installed(config)
+
+
+def _link_adapter(adapter: HostAdapter) -> None:
+    """한 호스트에 두 배선을 걸고 결과를 출력한다."""
+    path = adapter.config_path()
+    config = adapter.load(path)
+    updated = adapter.with_usage_installed(adapter.with_memory_installed(config))
+    adapter.write(path, updated)
+    console.print(f"[green]✓[/green] {adapter.display_name} 연결 완료 → {path}")
+    for note in adapter.post_install_notes():
+        console.print(f"   [yellow]![/yellow] {escape(note)}")

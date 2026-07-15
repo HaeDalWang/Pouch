@@ -17,7 +17,12 @@ runner = CliRunner()
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("POUCH_HOME", str(tmp_path / "global"))
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    # Claude 디렉토리는 만들어 둔다(탐지 대상). Codex는 없는 경로로 격리해
+    # 이 개발 머신의 실제 ~/.codex 를 건드리지 않게 한다.
+    claude = tmp_path / "claude"
+    claude.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no-codex"))
     project = tmp_path / "proj"
     (project / ".git").mkdir(parents=True)
     monkeypatch.chdir(project)
