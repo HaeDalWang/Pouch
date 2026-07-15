@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -52,6 +52,33 @@ class MemoryStore:
         self._reindex(entry.scope)
         self._sync_file_hosts(entry.scope)
         return path
+
+    def save_many(self, entries: Iterable[MemoryEntry]) -> list[Path]:
+        """여러 메모리를 저장하되 재인덱싱·파일호스트 동기화는 스코프당 한 번만 한다.
+
+        save를 항목마다 부르면 재인덱싱(스코프 전체 재읽기)·Kiro 재기록이 N번 반복돼
+        이관처럼 대량일 때 비용이 크다(O(N²) 파일 읽기). 파일을 다 쓴 뒤 건드린 스코프만
+        한 번 재인덱싱하고, 전역이 바뀌었으면 파일호스트를 한 번만 동기화한다 —
+        결과 상태는 save를 반복한 것과 같다(멱등).
+        """
+        written: list[Path] = []
+        touched: set[MemoryScope] = set()
+        for entry in entries:
+            path = self._path_for(entry.name, entry.scope)
+            if path is None:
+                raise ValueError(
+                    f"'{entry.scope.value}' 스코프 디렉토리를 결정할 수 없습니다. "
+                    "프로젝트 루트(.git/.pouch)가 있는지 확인하세요."
+                )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(entry.to_markdown(), encoding="utf-8")
+            written.append(path)
+            touched.add(entry.scope)
+        for scope in touched:
+            self._reindex(scope)
+        if MemoryScope.GLOBAL in touched:
+            self._sync_file_hosts(MemoryScope.GLOBAL)
+        return written
 
     def get(self, name: str, scope: MemoryScope) -> MemoryEntry | None:
         """이름과 스코프로 메모리를 읽는다. 없으면 None."""

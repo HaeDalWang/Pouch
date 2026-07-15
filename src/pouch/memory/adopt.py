@@ -113,7 +113,7 @@ def plan_native_file(
     scope, state, reason = _ROUTING[mem_type]
     entry = MemoryEntry(
         name=_derive_name(post.metadata, stem, native_type),
-        description=str(post.metadata.get("description", "")),
+        description=str(post.metadata.get("description") or ""),  # 빈 description(YAML None)이 "None"이 되지 않게
         body=post.content,
         type=mem_type,
         scope=scope,
@@ -121,3 +121,30 @@ def plan_native_file(
         created=created,
     )
     return AdoptionItem(entry=entry, source_path=source_path, reason=reason)
+
+
+def partition_existing(
+    items: list[AdoptionItem],
+    *,
+    existing: set[tuple[str, MemoryScope]],
+) -> tuple[list[AdoptionItem], list[SkippedNative]]:
+    """이미 pouch에 있는 이름은 이관에서 뺀다(덮어쓰기 방지). 배치 내 동명도 첫 것만 담는다.
+
+    "떨어진다 ≠ 삭제된다"의 이관판 — 사용자가 이미 가진(또는 promote한) 기억을 말없이
+    덮지 않는다. 세 갈래 소실을 여기서 막는다: (a) 기존 pouch 기억과 충돌, (b) 재실행 시
+    promote된 상태 리셋, (c) 배치 내 두 native 파일이 같은 이름으로 파생. 건너뛴 건 이유와
+    함께 보고한다(조용히 안 삼킴). existing은 (name, scope) 집합으로 호출부가 주입한다.
+    """
+    kept: list[AdoptionItem] = []
+    skipped: list[SkippedNative] = []
+    seen: set[tuple[str, MemoryScope]] = set()
+    for item in items:
+        key = (item.entry.name, item.entry.scope)
+        if key in existing:
+            skipped.append(SkippedNative(item.source_path, "이미 pouch에 있음(덮어쓰기 방지)"))
+        elif key in seen:
+            skipped.append(SkippedNative(item.source_path, "이관 배치 내 이름 중복(첫 항목만 담음)"))
+        else:
+            seen.add(key)
+            kept.append(item)
+    return kept, skipped

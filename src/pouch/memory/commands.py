@@ -15,7 +15,12 @@ from pouch.hooks.settings import (
     with_native_memory_disabled,
     write_settings,
 )
-from pouch.memory.adopt import AdoptionItem, SkippedNative, plan_native_file
+from pouch.memory.adopt import (
+    AdoptionItem,
+    SkippedNative,
+    partition_existing,
+    plan_native_file,
+)
 from pouch.memory.context import render_session_context
 from pouch.memory.liveness import check_reference_alive
 from pouch.memory.model import (
@@ -219,6 +224,11 @@ def _print_adoption_plan(
 
 @app.command("adopt")
 def adopt(
+    from_path: Path | None = typer.Option(
+        None,
+        "--from",
+        help="이관할 프로젝트 경로(기본: 현재 프로젝트). Claude를 서브디렉토리에서 돌렸으면 그 경로를 준다.",
+    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="무엇이 어디로·어떤 계층으로 갈지 미리보기만(아무것도 안 바꿈)."
     ),
@@ -234,7 +244,7 @@ def adopt(
     project→project 리뷰 대기(주입 안 함). 네이티브가 어긴 "안정 핵심만 주입"을 복원한다.
     시계(mtime→created)는 이 경계에서만 읽는다.
     """
-    project_root = paths.find_project_root() or Path.cwd()
+    project_root = from_path.resolve() if from_path else (paths.find_project_root() or Path.cwd())
     native_dir = paths.claude_project_memory_dir(project_root)
     if not native_dir.is_dir():
         console.print(f"네이티브 메모리가 없습니다: {native_dir}")
@@ -260,15 +270,20 @@ def adopt(
         else:
             skipped.append(result)
 
+    # 덮어쓰기 방지 — 이미 pouch에 있는 이름은 이관에서 빼고 보고한다("떨어진다 ≠ 삭제된다").
+    # 계획 단계에서 걸러야 dry-run에도 "이미 있음"이 보이고, 재실행·배치 내 충돌이 예방된다.
+    store = MemoryStore(project_dir=project_root / ".pouch" / "memory")
+    existing = {(e.name, e.scope) for e in store.list()}
+    items, existing_skips = partition_existing(items, existing=existing)
+    skipped += existing_skips
+
     _print_adoption_plan(project_root, native_dir, items, skipped, disable_native=disable_native)
 
     if dry_run:
         console.print("\n적용하려면 [cyan]--dry-run[/cyan] 없이 다시 실행하세요.")
         return
 
-    store = MemoryStore(project_dir=project_root / ".pouch" / "memory")
-    for item in items:
-        store.save(item.entry)
+    store.save_many(item.entry for item in items)
 
     backup: Path | None = None
     if disable_native:
