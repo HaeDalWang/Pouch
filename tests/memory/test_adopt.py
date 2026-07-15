@@ -1,0 +1,217 @@
+"""adopt — 네이티브 메모리 이관: 순수 코어(스코프·계층·이름) + CLI 통합."""
+
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from pouch.memory.adopt import AdoptionItem, SkippedNative, plan_native_file
+from pouch.memory.commands import app
+from pouch.memory.model import MemoryScope, MemoryState, MemoryType
+
+runner = CliRunner()
+
+
+def _native(
+    mem_type: str | None,
+    *,
+    name: str = "",
+    description: str = "d",
+    body: str = "본문",
+    nested: bool = True,
+) -> str:
+    """네이티브(Claude 기본) 메모리 파일 텍스트를 만든다."""
+    lines = ["---"]
+    if name:
+        lines.append(f'name: "{name}"')
+    lines.append(f'description: "{description}"')
+    if mem_type is not None:
+        if nested:
+            lines += ["metadata:", "  node_type: memory", f"  type: {mem_type}", "  originSessionId: abc-123"]
+        else:
+            lines.append(f"type: {mem_type}")
+    lines += ["---", "", body, ""]
+    return "\n".join(lines)
+
+
+def _plan(text: str, *, stem: str = "stem", created: date = date(2026, 6, 1)):
+    return plan_native_file(text, source_path=f"/n/{stem}.md", stem=stem, created=created)
+
+
+# ── 스코프·계층: 타입이 자리와 계층을 정한다 ──────────────────────────────
+
+
+def test_feedback_goes_global_indexed() -> None:
+    item = _plan(_native("feedback", name="respect-stop"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.type is MemoryType.FEEDBACK
+    assert item.entry.scope is MemoryScope.GLOBAL
+    assert item.entry.state is MemoryState.INDEXED
+
+
+def test_user_goes_global_indexed() -> None:
+    item = _plan(_native("user"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.scope is MemoryScope.GLOBAL
+    assert item.entry.state is MemoryState.INDEXED
+
+
+def test_reference_goes_project_indexed() -> None:
+    item = _plan(_native("reference"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.scope is MemoryScope.PROJECT
+    assert item.entry.state is MemoryState.INDEXED
+
+
+def test_project_goes_project_pending() -> None:
+    """네이티브가 어긴 '안정 핵심만 주입' 복원 — 세션 맥락은 리뷰 대기(주입 안 함)."""
+    item = _plan(_native("project"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.scope is MemoryScope.PROJECT
+    assert item.entry.state is MemoryState.PENDING
+
+
+# ── 파싱·건너뜀 ──────────────────────────────────────────────────────────
+
+
+def test_flat_type_fallback() -> None:
+    item = _plan(_native("feedback", nested=False))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.type is MemoryType.FEEDBACK
+
+
+def test_unknown_type_skipped() -> None:
+    # boundary는 네이티브에 없는 타입 → 조용히 삼키지 않고 이유와 함께 건너뜀.
+    result = _plan(_native("boundary"))
+    assert isinstance(result, SkippedNative)
+    assert "boundary" in result.reason
+
+
+def test_missing_type_skipped() -> None:
+    result = _plan(_native(None))
+    assert isinstance(result, SkippedNative)
+
+
+def test_broken_frontmatter_skipped_not_crash() -> None:
+    # 실데이터 회귀: description에 따옴표 없는 콜론이 있으면 YAML이 터진다.
+    # 전체 이관을 멈추지 않고 이 파일만 건너뛴다.
+    broken = "---\ndescription: 대시보드: 503 원인\nmetadata:\n  type: reference\n---\n본문\n"
+    result = _plan(broken)
+    assert isinstance(result, SkippedNative)
+    assert "파싱 실패" in result.reason
+
+
+# ── 이름 파생 ────────────────────────────────────────────────────────────
+
+
+def test_name_prefers_frontmatter() -> None:
+    item = _plan(_native("feedback", name="respect-stop-here"), stem="feedback_respect_stop_here")
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.name == "respect-stop-here"
+
+
+def test_name_falls_back_to_stem_stripping_type_prefix() -> None:
+    item = _plan(_native("project"), stem="project_edge_hunt_260714")
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.name == "edge_hunt_260714"
+
+
+def test_name_sanitizes_unsafe_chars() -> None:
+    item = _plan(_native("user", name="weird name/with:chars"))
+    assert isinstance(item, AdoptionItem)
+    assert "/" not in item.entry.name
+    assert ":" not in item.entry.name
+
+
+def test_created_and_body_preserved() -> None:
+    item = _plan(_native("reference", description="설명", body="본문 내용"), created=date(2026, 3, 3))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.created == date(2026, 3, 3)
+    assert item.entry.description == "설명"
+    assert "본문 내용" in item.entry.body
+
+
+# ── CLI 통합 ─────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """글로벌은 POUCH_HOME으로, 프로젝트는 .git 있는 cwd로 격리한다."""
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path / "global"))
+    project = tmp_path / "proj"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.chdir(project)
+    return tmp_path
+
+
+def _seed_native(project: Path) -> Path:
+    from pouch import paths
+
+    native = paths.claude_project_memory_dir(project)
+    native.mkdir(parents=True)
+    (native / "feedback_stop.md").write_text(
+        _native("feedback", name="stop-here"), encoding="utf-8"
+    )
+    (native / "project_log_260601.md").write_text(_native("project"), encoding="utf-8")
+    (native / "MEMORY.md").write_text("- 인덱스 줄(이관 대상 아님)\n", encoding="utf-8")
+    return native
+
+
+def test_adopt_migrates_by_type_and_disables_native(workspace: Path) -> None:
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+    from pouch.memory.store import MemoryStore
+
+    project = workspace / "proj"
+    _seed_native(project)
+
+    result = runner.invoke(app, ["adopt"])
+    assert result.exit_code == 0, result.stdout
+
+    entries = {e.name: e for e in MemoryStore(project_dir=project / ".pouch" / "memory").list()}
+    assert entries["stop-here"].scope is MemoryScope.GLOBAL
+    assert entries["stop-here"].state is MemoryState.INDEXED
+    assert entries["log_260601"].scope is MemoryScope.PROJECT
+    assert entries["log_260601"].state is MemoryState.PENDING
+    # MEMORY.md 인덱스는 이관되지 않는다.
+    assert "log_260601" in entries and "MEMORY" not in entries
+    # 네이티브 자동로드가 꺼졌다(대체).
+    assert is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+
+
+def test_adopt_dry_run_writes_nothing(workspace: Path) -> None:
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+    from pouch.memory.store import MemoryStore
+
+    project = workspace / "proj"
+    _seed_native(project)
+
+    result = runner.invoke(app, ["adopt", "--dry-run"])
+    assert result.exit_code == 0, result.stdout
+    assert "stop-here" in result.stdout  # 계획에 이름이 보인다
+
+    assert list(MemoryStore(project_dir=project / ".pouch" / "memory").list()) == []
+    assert not is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+
+
+def test_adopt_no_disable_keeps_native(workspace: Path) -> None:
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+
+    project = workspace / "proj"
+    _seed_native(project)
+
+    result = runner.invoke(app, ["adopt", "--no-disable-native"])
+    assert result.exit_code == 0, result.stdout
+    assert not is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+
+
+def test_adopt_no_native_dir_exits_cleanly(workspace: Path) -> None:
+    # 네이티브 메모리 디렉토리가 없으면 조용히 종료(에러 아님).
+    result = runner.invoke(app, ["adopt"])
+    assert result.exit_code == 0, result.stdout
+    assert "없습니다" in result.stdout

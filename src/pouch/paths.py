@@ -132,6 +132,19 @@ def claude_settings_path() -> Path:
     return base / "settings.json"
 
 
+def claude_project_memory_dir(project_root: Path) -> Path:
+    """주어진 프로젝트 루트의 Claude 네이티브 메모리 디렉토리.
+
+    네이티브는 프로젝트 경로를 슬러그(`/`→`-`)로 접어 `~/.claude/projects/<슬러그>/memory/`에
+    담는다. adopt(대체 A안 §2)가 이 자리를 훑어 pouch로 이관한다. `CLAUDE_CONFIG_DIR`로
+    베이스를 오버라이드할 수 있다(테스트/대체 설치 위치).
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    slug = str(project_root.resolve()).replace("/", "-")
+    return base / "projects" / slug / "memory"
+
+
 def claude_skills_dir() -> Path:
     """Claude Code 스킬 설치 위치(`~/.claude/skills/`).
 
