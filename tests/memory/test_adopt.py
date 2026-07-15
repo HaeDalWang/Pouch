@@ -124,6 +124,20 @@ def test_name_falls_back_to_stem_stripping_type_prefix() -> None:
     assert item.entry.name == "edge_hunt_260714"
 
 
+def test_name_strips_type_prefix_from_frontmatter_too() -> None:
+    # frontmatter name에 타입 접두가 박혀 있어도 벗긴다(타입은 이미 필드).
+    item = _plan(_native("feedback", name="feedback_guard_runs"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.name == "guard_runs"
+
+
+def test_name_prefix_strip_avoids_false_match() -> None:
+    # 접두 뒤에 _가 올 때만 벗긴다 — "projection"은 "project_"로 시작하지 않는다.
+    item = _plan(_native("project", name="projection_model"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.name == "projection_model"
+
+
 def test_name_sanitizes_unsafe_chars() -> None:
     item = _plan(_native("user", name="weird name/with:chars"))
     assert isinstance(item, AdoptionItem)

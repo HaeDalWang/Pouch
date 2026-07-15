@@ -78,13 +78,17 @@ def _native_type(meta: dict) -> str | None:
 
 
 def _derive_name(meta: dict, stem: str, native_type: str) -> str:
-    """pouch name(=파일명)을 정한다. frontmatter name 우선, 없으면 stem에서 타입 접두 제거."""
-    raw = str(meta.get("name") or "").strip()
-    if not raw:
-        raw = stem
-        prefix = f"{native_type}_"
-        if raw.startswith(prefix):
-            raw = raw[len(prefix):]
+    """pouch name(=파일명)을 정한다. frontmatter name 우선, 없으면 stem.
+
+    어느 쪽에서 왔든 중복되는 타입 접두(`<type>_`)는 벗긴다 — 타입은 이미 별도
+    필드라, 네이티브가 파일명·name에 박아둔 `feedback_`·`project_` 접두를 그대로
+    끌고 오면 이름이 지저분해진다. 접두 뒤에 `_`가 올 때만 벗겨 오탐을 막는다
+    (예: project_type인 "projection_foo"는 안 건드림).
+    """
+    raw = str(meta.get("name") or "").strip() or stem
+    prefix = f"{native_type}_"
+    if raw.startswith(prefix):
+        raw = raw[len(prefix):]
     safe = _UNSAFE_RE.sub("-", raw).strip("-")
     return safe or stem
 
