@@ -74,7 +74,13 @@ pouch boundary remove <name>     # = 경계 forget
 저장은 여전히 memory(모델 안 바꿈), `memory add -t boundary`도 하위호환 유지. **비강제 철학
 그대로** — list/add/remove는 표면일 뿐, 차단기는 없다.
 
-## 다음 — B(온보딩)
+## B(온보딩) — 완료
 
-`init`이 흔한 경계(force-push·prod-deploy·secrets)를 **제안**하는 길. 템플릿 큐레이션이
-"남이 만든 정답 세트" 철학과 닿아, 기본값 아닌 물어보기로. 별도 착수.
+`init`이 흔한 안전 경계(force-push·prod·secrets)를 **제안**한다(`boundary/templates.py` +
+`_maybe_offer_boundaries`). 철학을 지키는 두 장치:
+
+- **안전 경계만, near-universal한 것만** — 생산성 큐레이션은 안 담는다.
+- **고른 것만 담긴다** — 기본값 아닌 checkbox 제안. `--yes`(비대화형)에선 아예
+  건너뛴다(경계는 감지된 사실이 아니라 선호라 강요 안 함). 이미 걸린 건 후보에서 뺀다.
+
+진짜 경계는 실사용에서 사람이 `pouch boundary add`로 건다 — 템플릿은 씨앗일 뿐.

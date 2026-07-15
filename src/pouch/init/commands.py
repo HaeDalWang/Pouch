@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import typer
@@ -79,7 +80,48 @@ def init(
 
     _maybe_offer_set(answers, yes=yes)
     _maybe_offer_adopt(yes=yes)
+    _maybe_offer_boundaries(yes=yes)
     _maybe_link_hook(yes=yes)
+
+
+def _maybe_offer_boundaries(*, yes: bool) -> None:
+    """흔한 안전 경계를 제안한다 — 고른 것만 담긴다(대화형 전용).
+
+    `--yes`(비대화형)에선 건너뛴다: 경계는 감지된 사실이 아니라 사용자가 고르는 선호라,
+    확인 없이 강요하지 않는다("지어낸 세트 안 담는다" 철학과 같은 정신 — 기본값 아닌
+    물어보기). 이미 걸린 이름은 후보에서 빼 중복 제안을 막는다.
+    """
+    if yes:
+        return
+
+    import questionary
+
+    from pouch.boundary.templates import BOUNDARY_TEMPLATES, to_memory
+    from pouch.memory.model import MemoryType
+
+    store = MemoryStore()
+    existing = {m.name for m in store.list() if m.type is MemoryType.BOUNDARY}
+    candidates = [t for t in BOUNDARY_TEMPLATES if t.name not in existing]
+    if not candidates:
+        return
+
+    choices = [
+        questionary.Choice(f"[{t.direction.value.upper()}] {t.description}", value=t.name)
+        for t in candidates
+    ]
+    picked = questionary.checkbox(
+        "🚧 자율성 경계를 걸어둘까요? (스페이스로 고르고 엔터 — 안 골라도 됩니다)",
+        choices=choices,
+    ).ask()
+    if not picked:
+        console.print("   경계는 나중에 [cyan]pouch boundary add[/cyan] 로 걸 수 있습니다.")
+        return
+
+    by_name = {t.name: t for t in candidates}
+    today = date.today()
+    for name in picked:
+        store.save(to_memory(by_name[name], now=today))
+    console.print(f"[green]✓[/green] 경계 {len(picked)}개를 걸었습니다.")
 
 
 def _maybe_offer_adopt(*, yes: bool) -> None:
