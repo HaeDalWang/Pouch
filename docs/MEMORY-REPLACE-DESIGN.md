@@ -112,7 +112,7 @@ Claude Code 네이티브 메모리는 **완전히 끌 수 있다**:
 
 | 시점 | write 경로 | 비고 |
 |---|---|---|
-| 단기 | 주입에 "기억하려면 `pouch memory add …` 실행" 지침 한 줄 | **호스트 무관** — Codex·Kiro도 동일하게 동작. 마찰은 있으나 정직 |
+| 단기 | 주입에 "기억하려면 `pouch memory add …` 실행" 지침 한 줄 | **✅ 구현됨**(`render_how_to_remember`, `memory/context.py`). 고정 구역(경계·체크포인트 아래) 영어 지침이라 Codex·Kiro도 동일하게 동작 |
 | 장기 | PostToolUse/Stop 훅으로 기억 후보 포착 → PENDING | 별도 설계(deferred). 진짜 저마찰 |
 
 이 대가는 순비용이자, 동시에 **pouch를 저장소 경쟁에서 진짜 차별(주입·경계·수명)로 미는
@@ -149,7 +149,8 @@ pouch memory adopt [--dry-run] [--no-disable-native]
    PENDING 후 사람 리뷰. (휴리스틱은 빠르지만 오분류 위험)
 3. **repo 역매핑 실패 처리** — project 기억의 원래 repo가 사라졌으면? (global 강등 +
    메모 vs skip vs 별도 보관)
-4. **write 지침 문구·위치** — 주입 어디에, 어떤 한 줄로 "pouch memory add" 를 심을지.
+4. ~~**write 지침 문구·위치**~~ — **닫힘.** 고정 구역(경계·체크포인트 아래)에 영어
+   지침으로 심었다(`render_how_to_remember`). 채우는 값은 사용자 언어로 쓰라고 명시.
 5. **write 경로 장기안 착수 시점** — 단기 지침으로 버티다 언제 PostToolUse 훅 설계로 갈지.
 
 > 이 문서도 [MEMORY-POSITIONING.md](MEMORY-POSITIONING.md)처럼 결정을 *열어두는* 문서다.
