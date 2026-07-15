@@ -72,10 +72,32 @@ def test_reference_goes_project_indexed() -> None:
 
 
 def test_project_goes_project_pending() -> None:
-    """네이티브가 어긴 '안정 핵심만 주입' 복원 — 세션 맥락은 리뷰 대기(주입 안 함)."""
+    """네이티브가 어긴 '안정 핵심만 주입' 복원 — 날짜 없는 세션 맥락은 리뷰 대기(주입 안 함)."""
     item = _plan(_native("project"))
     assert isinstance(item, AdoptionItem)
     assert item.entry.scope is MemoryScope.PROJECT
+    assert item.entry.state is MemoryState.PENDING
+
+
+def test_project_dated_name_goes_archived() -> None:
+    # 날짜(YYMMDD) 박힌 project = 명백한 세션로그 → ARCHIVED(주입 X·recall O·리뷰 잔소리 없음).
+    item = _plan(_native("project"), stem="project_full_review_260710")
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.name == "full_review_260710"
+    assert item.entry.state is MemoryState.ARCHIVED
+
+
+def test_project_undated_milestone_stays_pending() -> None:
+    # 날짜 없는 활성 마일스톤은 PENDING 유지(리뷰 후 promote 대상).
+    item = _plan(_native("project", name="v10-inverse-reenablement"))
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.state is MemoryState.PENDING
+
+
+def test_dated_heuristic_rejects_invalid_month() -> None:
+    # "121314"는 월(13)이 유효하지 않아 날짜로 안 봄 → 이슈번호 오탐 방지, PENDING 유지.
+    item = _plan(_native("project", name="issues-121314-fix"))
+    assert isinstance(item, AdoptionItem)
     assert item.entry.state is MemoryState.PENDING
 
 
@@ -217,7 +239,9 @@ def _seed_native(project: Path) -> Path:
     (native / "feedback_stop.md").write_text(
         _native("feedback", name="stop-here"), encoding="utf-8"
     )
-    (native / "project_log_260601.md").write_text(_native("project"), encoding="utf-8")
+    # 날짜 없는 project → PENDING(리뷰 대기). 날짜 박힌 세션로그의 ARCHIVED 경로는
+    # 별도 단위 테스트가 커버한다.
+    (native / "project_trading_scope.md").write_text(_native("project"), encoding="utf-8")
     (native / "MEMORY.md").write_text("- 인덱스 줄(이관 대상 아님)\n", encoding="utf-8")
     return native
 
@@ -236,10 +260,10 @@ def test_adopt_migrates_by_type_and_disables_native(workspace: Path) -> None:
     entries = {e.name: e for e in MemoryStore(project_dir=project / ".pouch" / "memory").list()}
     assert entries["stop-here"].scope is MemoryScope.GLOBAL
     assert entries["stop-here"].state is MemoryState.INDEXED
-    assert entries["log_260601"].scope is MemoryScope.PROJECT
-    assert entries["log_260601"].state is MemoryState.PENDING
+    assert entries["trading_scope"].scope is MemoryScope.PROJECT
+    assert entries["trading_scope"].state is MemoryState.PENDING
     # MEMORY.md 인덱스는 이관되지 않는다.
-    assert "log_260601" in entries and "MEMORY" not in entries
+    assert "trading_scope" in entries and "MEMORY" not in entries
     # 네이티브 자동로드가 꺼졌다(대체).
     assert is_native_memory_disabled(load_settings(paths.claude_settings_path()))
 
@@ -288,12 +312,12 @@ def test_adopt_rerun_does_not_reset_promoted(workspace: Path) -> None:
     runner.invoke(app, ["adopt"])  # 1차: project 기억은 PENDING
 
     store = MemoryStore(project_dir=project / ".pouch" / "memory")
-    store.promote(store.get("log_260601", MemoryScope.PROJECT))
-    assert store.get("log_260601", MemoryScope.PROJECT).state is MemoryState.INDEXED
+    store.promote(store.get("trading_scope", MemoryScope.PROJECT))
+    assert store.get("trading_scope", MemoryScope.PROJECT).state is MemoryState.INDEXED
 
     result = runner.invoke(app, ["adopt"])  # 2차
     assert result.exit_code == 0, result.stdout
-    assert store.get("log_260601", MemoryScope.PROJECT).state is MemoryState.INDEXED
+    assert store.get("trading_scope", MemoryScope.PROJECT).state is MemoryState.INDEXED
 
 
 def test_adopt_does_not_overwrite_existing_pouch_memory(workspace: Path) -> None:
@@ -328,4 +352,4 @@ def test_adopt_from_path_reads_that_project(workspace: Path) -> None:
 
     names = {e.name for e in MemoryStore(project_dir=other / ".pouch" / "memory").list()}
     assert "stop-here" in names
-    assert "log_260601" in names
+    assert "trading_scope" in names

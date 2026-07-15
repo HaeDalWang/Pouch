@@ -90,8 +90,9 @@ Claude Code 네이티브 메모리는 **완전히 끌 수 있다**:
 
 | 들어오는 것 | pouch 계층 | 결과 |
 |---|---|---|
-| user·feedback·살아있는 reference | **INDEXED** | 주입됨(안정 핵심만) |
-| project 세션로그(대부분, 날짜 박힌 것) | **ARCHIVED** 또는 **PENDING** | 주입 안 됨 · recall로만 소환 |
+| user·feedback·reference | **INDEXED** | 주입됨(안정 핵심만) |
+| project — **날짜(YYMMDD) 박힌 세션로그** | **ARCHIVED** | 주입 안 됨 · recall만 · 리뷰 잔소리 없음 |
+| project — 날짜 없는 것 | **PENDING** | 주입 안 됨 · recall 가능 · 리뷰 대기 |
 
 → 53파일 사례라면 **주입되는 건 ~10개 안팎으로 줄고** 나머지는 recall 대기. "담을 때"가
 아니라 "리뷰 때" 마찰을 무는 pouch pending 철학과 같은 정신이다.
@@ -145,8 +146,8 @@ pouch memory adopt [--dry-run] [--no-disable-native]
 ## 남은 하위 결정
 
 1. **provenance 보존** — `originSessionId`를 새 필드로 남길까, 버릴까.
-2. **세션로그 자동 판별** — 날짜 접미사(`_260710`) 휴리스틱으로 ARCHIVED 직행 vs 전부
-   PENDING 후 사람 리뷰. (휴리스틱은 빠르지만 오분류 위험)
+2. ~~**세션로그 자동 판별**~~ — **닫힘.** 이름에 유효한 YYMMDD가 박힌 project는 ARCHIVED,
+   없으면 PENDING(`_looks_dated`). 오분류돼도 recall로 복구 가능. 실측 리뷰 큐 45→30.
 3. **repo 역매핑 실패 처리** — project 기억의 원래 repo가 사라졌으면? (global 강등 +
    메모 vs skip vs 별도 보관)
 4. ~~**write 지침 문구·위치**~~ — **닫힘.** 고정 구역(경계·체크포인트 아래)에 영어

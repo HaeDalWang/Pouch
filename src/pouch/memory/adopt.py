@@ -50,6 +50,19 @@ _ROUTING: dict[MemoryType, tuple[MemoryScope, MemoryState, str]] = {
 # 파일명·frontmatter name을 pouch 파일명(=name)으로 쓸 안전한 글자만 남긴다.
 _UNSAFE_RE = re.compile(r"[^a-zA-Z0-9_-]+")
 
+# 세션로그 신호 — 이름에 박힌 YYMMDD(6자리) 날짜 토큰. 월·일이 유효할 때만 날짜로
+# 본다(issue 번호 "121314" 같은 6자리 오탐 방지). project 이관 계층을 PENDING↔ARCHIVED로
+# 가른다: 날짜 박힌 세션로그는 명백히 지난 맥락이라 리뷰 잔소리에서 빼고 recall만 남긴다.
+_DATE_TOKEN_RE = re.compile(r"(?<![0-9])(\d{2})(\d{2})(\d{2})(?![0-9])")
+
+
+def _looks_dated(name: str) -> bool:
+    """이름에 유효한 YYMMDD 날짜 토큰이 있는지(명백한 세션로그 신호)."""
+    return any(
+        1 <= int(mm) <= 12 and 1 <= int(dd) <= 31
+        for _yy, mm, dd in _DATE_TOKEN_RE.findall(name)
+    )
+
 
 @dataclass(frozen=True)
 class AdoptionItem:
@@ -115,8 +128,14 @@ def plan_native_file(
         return SkippedNative(source_path, f"알 수 없는 타입 '{native_type}'")
 
     scope, state, reason = _ROUTING[mem_type]
+    name = _derive_name(post.metadata, stem, native_type)
+    # 세션로그 휴리스틱: project 기억 이름에 YYMMDD가 박혀 있으면 명백한 지난 세션
+    # 맥락이라 ARCHIVED(주입 X·recall O·리뷰 잔소리 없음). 날짜 없는 project는 PENDING 유지.
+    if mem_type is MemoryType.PROJECT and _looks_dated(name):
+        state = MemoryState.ARCHIVED
+        reason = "날짜 박힌 세션로그 — 보관(주입 X·recall O·리뷰 잔소리 없음)"
     entry = MemoryEntry(
-        name=_derive_name(post.metadata, stem, native_type),
+        name=name,
         description=str(post.metadata.get("description") or ""),  # 빈 description(YAML None)이 "None"이 되지 않게
         body=post.content,
         type=mem_type,
