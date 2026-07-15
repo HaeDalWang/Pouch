@@ -142,6 +142,9 @@ def import_source(
     force: bool = typer.Option(False, "--force", help="owned 재입양 시 내 본문을 덮는 것을 허용."),
     source: str = typer.Option("local", "--source", help="출처 라벨."),
     tag: list[str] = typer.Option([], "--tag", help="붙일 태그(반복 가능)."),
+    project: bool = typer.Option(
+        False, "--project", "-p", help="이 프로젝트 주머니에 담는다(전역 아님, 게이트 건너뜀)."
+    ),
 ) -> None:
     """주머니에 담을 수 있도록 카탈로그에 등록한다(설치는 install이 함)."""
     path = source_path.expanduser().resolve()
@@ -149,10 +152,18 @@ def import_source(
         console.print(f"[red]✗[/red] 경로가 없습니다: {path}")
         raise typer.Exit(code=1)
 
-    # 관문 (다): import는 소스 스테이징에만 담는다 — 카탈로그 진입 0개.
-    # 사용자가 실제로 쓰거나(evolve의 reconcile) install/세트로 명시하면 그때
-    # 카탈로그로 진입한다. 여기서 전량 자동 등록만 끊는다("판단"이 아니라).
-    store = CatalogStore(catalog_dir=paths.sources_dir())
+    # 전역 import는 소스 스테이징에만 담는다(관문 (다): 전량 자동 등록 끊기 — 실사용·
+    # install·세트가 카탈로그로 진입시킨다). --project는 "이 도구는 이 프로젝트 것"이라는
+    # 명시 의도라 게이트를 건너뛰고 프로젝트 카탈로그로 바로 담는다(install과 같은 정신).
+    if project:
+        proj_dir = paths.project_catalog_dir()
+        if proj_dir is None:
+            console.print("[red]✗[/red] --project는 프로젝트 안에서만 됩니다(.git/.pouch 필요).")
+            raise typer.Exit(code=1)
+        store = CatalogStore(catalog_dir=proj_dir)
+    else:
+        store = CatalogStore(catalog_dir=paths.sources_dir())
+
     tags = tuple(tag)
     try:
         kind, path = _classify_or_discover(path)
@@ -163,6 +174,11 @@ def import_source(
 
     for skip in result.skipped:
         console.print(f"[yellow]![/yellow] 건너뜀: {skip.reason}")
+    if project:
+        console.print(f"[green]✓[/green] {len(result.entries)}개를 이 프로젝트 주머니에 담았습니다:")
+        for entry in result.entries:
+            console.print(f"  • [cyan]{entry.id}[/cyan] ({entry.ownership.value})")
+        return
     console.print(
         f"[green]✓[/green] {len(result.entries)}개 항목을 소스로 담았습니다 "
         "[dim](쓰거나 install하면 카탈로그로 진입)[/dim]:"
@@ -222,7 +238,15 @@ def list_entries(
         return
 
     entries = list(CatalogStore().list())
-    if not entries:
+    active = active_entries()
+
+    if entries:
+        console.print(f"📦 [bold]카탈로그[/bold] ({len(entries)}개)\n")
+        for entry in entries:
+            surface = "[green]●[/green] 표면" if entry.id in active else "[dim]○[/dim]"
+            tags = f" [dim]{', '.join(entry.tags)}[/dim]" if entry.tags else ""
+            console.print(f"  {surface} [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
+    else:
         staged = list(CatalogStore(catalog_dir=paths.sources_dir()).list())
         console.print("📦 카탈로그가 비어 있습니다.")
         if staged:
@@ -232,14 +256,23 @@ def list_entries(
             console.print("   보기: [cyan]pouch catalog list --sources[/cyan]")
         else:
             console.print("   담기: [cyan]pouch catalog import <경로>[/cyan]")
-        return
 
-    active = active_entries()
-    console.print(f"📦 [bold]카탈로그[/bold] ({len(entries)}개)\n")
-    for entry in entries:
-        surface = "[green]●[/green] 표면" if entry.id in active else "[dim]○[/dim]"
+    # 프로젝트별 주머니 — 전역 아래에 이 repo 전용 도구를 따로 보여준다(있을 때만).
+    _list_project_catalog()
+
+
+def _list_project_catalog() -> None:
+    """현재 프로젝트의 카탈로그를 별도 구역으로 보여준다(프로젝트 밖·빈 경우 무동작)."""
+    proj_dir = paths.project_catalog_dir()
+    if proj_dir is None:
+        return
+    proj_entries = list(CatalogStore(catalog_dir=proj_dir).list())
+    if not proj_entries:
+        return
+    console.print(f"\n📁 [bold]이 프로젝트 주머니[/bold] ({len(proj_entries)}개)\n")
+    for entry in proj_entries:
         tags = f" [dim]{', '.join(entry.tags)}[/dim]" if entry.tags else ""
-        console.print(f"  {surface} [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
+        console.print(f"  • [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
 
 
 def _list_sources() -> None:
