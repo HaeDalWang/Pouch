@@ -54,6 +54,24 @@ def test_contract1_counts_ownership_and_surface() -> None:
     assert status.vendored == 2 and status.linked == 1 and status.owned == 0
     assert status.active_count == 1
     assert status.memory_count == 3
+    assert status.core_count == 0  # 사용 이력 없음 → 핵심 0
+
+
+def test_core_count_recognizes_sustained_use() -> None:
+    from pouch.status import render_lines
+
+    entries = [_vendored("veteran")]
+    # 12회·span 30일 → 핵심(전체 이력 기준, 최근 창 밖이어도 잡힌다).
+    events = [_event("veteran", "2026-06-01T00:00:00"), _event("veteran", "2026-07-01T00:00:00")]
+    events += [_event("veteran", "2026-06-01T00:00:00") for _ in range(10)]
+
+    status = build_status(
+        memory_count=0, entries=entries, active_ids={"veteran"},
+        events=events, now=_NOW,
+    )
+
+    assert status.core_count == 1
+    assert "핵심 도구 1개" in "\n".join(render_lines(status))
 
 
 def test_contract2_recent_window_excludes_old_events() -> None:

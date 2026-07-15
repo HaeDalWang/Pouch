@@ -3,10 +3,24 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import typer
 from rich.console import Console
 
+from pouch import paths
+from pouch.hooks.settings import (
+    is_native_memory_disabled,
+    load_settings,
+    with_native_memory_disabled,
+    write_settings,
+)
+from pouch.memory.adopt import (
+    AdoptionItem,
+    SkippedNative,
+    partition_existing,
+    plan_native_file,
+)
 from pouch.memory.context import render_session_context
 from pouch.memory.liveness import check_reference_alive
 from pouch.memory.model import (
@@ -171,6 +185,162 @@ def promote(
             return
     console.print(f"'{name}' 기억을 찾지 못했습니다.")
     raise typer.Exit(code=1)
+
+
+def gather_adoption(
+    project_root: Path,
+) -> tuple[Path, list[AdoptionItem], list[SkippedNative]]:
+    """네이티브를 훑어 이관 계획을 낸다(저장은 안 함). native_dir·이관목록·건너뜀 반환.
+
+    덮어쓰기 방지(partition_existing)까지 적용해서, 반환하는 items는 실제로 저장할 것만.
+    native_dir가 없으면 빈 리스트로 돌려준다(호출부가 판단). 파일 읽기만 하고 쓰기는
+    안 한다 — CLI(`adopt`)와 init 마법사가 같은 계획 로직을 공유한다.
+    """
+    native_dir = paths.claude_project_memory_dir(project_root)
+    if not native_dir.is_dir():
+        return native_dir, [], []
+
+    items: list[AdoptionItem] = []
+    skipped: list[SkippedNative] = []
+    for path in sorted(p for p in native_dir.glob("*.md") if p.name != "MEMORY.md"):
+        created = date.fromtimestamp(path.stat().st_mtime)
+        result = plan_native_file(
+            path.read_text(encoding="utf-8"),
+            source_path=str(path),
+            stem=path.stem,
+            created=created,
+        )
+        if isinstance(result, AdoptionItem):
+            items.append(result)
+        else:
+            skipped.append(result)
+
+    existing = {
+        (e.name, e.scope)
+        for e in MemoryStore(project_dir=project_root / ".pouch" / "memory").list()
+    }
+    items, existing_skips = partition_existing(items, existing=existing)
+    return native_dir, items, skipped + existing_skips
+
+
+def apply_adoption(
+    project_root: Path, items: list[AdoptionItem], *, disable_native: bool
+) -> Path | None:
+    """이관 계획을 저장하고(save_many), 옵션대로 네이티브 자동로드를 끈다. .bak 경로 반환."""
+    MemoryStore(project_dir=project_root / ".pouch" / "memory").save_many(
+        item.entry for item in items
+    )
+    if not disable_native:
+        return None
+    settings_path = paths.claude_settings_path()
+    settings = load_settings(settings_path)
+    if is_native_memory_disabled(settings):
+        return None
+    return write_settings(settings_path, with_native_memory_disabled(settings))
+
+
+def _print_adoption_plan(
+    project_root: Path,
+    native_dir: Path,
+    items: list[AdoptionItem],
+    skipped: list[SkippedNative],
+    *,
+    disable_native: bool,
+) -> None:
+    """이관 계획을 한 화면으로 그린다(dry-run·적용 공통 머리)."""
+    console.print(f"🦦 memory adopt — 프로젝트: [bold]{project_root.name}[/bold]")
+    console.print(f"   네이티브: {native_dir}")
+    console.print(f"   발견 {len(items) + len(skipped)}건 (이관 {len(items)} · 건너뜀 {len(skipped)})")
+
+    indexed = [i for i in items if i.entry.state is MemoryState.INDEXED]
+    pending = [i for i in items if i.entry.state is MemoryState.PENDING]
+    archived = [i for i in items if i.entry.state is MemoryState.ARCHIVED]
+
+    if indexed:
+        console.print(f"\n[bold]주입됨 INDEXED[/bold] {len(indexed)}건 — 안정 핵심")
+        for item in indexed:
+            e = item.entry
+            console.print(f"  • [cyan]{e.name}[/cyan] ({e.type.value}) [{e.scope.value}]")
+    if pending:
+        console.print(f"\n[bold]리뷰 대기 PENDING[/bold] {len(pending)}건 — 주입 안 함·recall 가능")
+        for item in pending:
+            e = item.entry
+            console.print(f"  • [cyan]{e.name}[/cyan] ({e.type.value}) [{e.scope.value}]")
+    if archived:
+        console.print(
+            f"\n[bold]보관 ARCHIVED[/bold] {len(archived)}건 — 날짜 박힌 세션로그(주입 X·recall O)"
+        )
+        for item in archived:
+            e = item.entry
+            console.print(f"  • [cyan]{e.name}[/cyan] ({e.type.value}) [{e.scope.value}]")
+    if skipped:
+        console.print(f"\n[bold]건너뜀[/bold] {len(skipped)}건")
+        for s in skipped:
+            console.print(f"  • {Path(s.source_path).name} — [dim]{s.reason}[/dim]")
+
+    native_state = (
+        "끔 (autoMemoryEnabled=false · 대체 확정)"
+        if disable_native
+        else "유지 (안전망) — 완전 대체는 --disable-native"
+    )
+    console.print(f"\n  네이티브 자동로드: [yellow]{native_state}[/yellow]")
+
+
+@app.command("adopt")
+def adopt(
+    from_path: Path | None = typer.Option(
+        None,
+        "--from",
+        help="이관할 프로젝트 경로(기본: 현재 프로젝트). Claude를 서브디렉토리에서 돌렸으면 그 경로를 준다.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="무엇이 어디로·어떤 계층으로 갈지 미리보기만(아무것도 안 바꿈)."
+    ),
+    disable_native: bool = typer.Option(
+        False,
+        "--disable-native/--no-disable-native",
+        help="이관 후 네이티브 자동로드까지 끈다(대체 확정). 기본은 옮기기만 — 네이티브는 안전망으로 남긴다.",
+    ),
+) -> None:
+    """Claude 네이티브 메모리를 pouch로 이관한다(대체 A안 §2). 원본은 안 지운다(복사).
+
+    타입이 자리와 계층을 정한다: user·feedback→global 주입, reference→project 주입,
+    project→project 리뷰 대기(주입 안 함). 네이티브가 어긴 "안정 핵심만 주입"을 복원한다.
+    시계(mtime→created)는 이 경계에서만 읽는다.
+    """
+    project_root = from_path.resolve() if from_path else (paths.find_project_root() or Path.cwd())
+    # gather_adoption이 계획 계산 + 덮어쓰기 방지(partition_existing)까지 한다("떨어진다 ≠
+    # 삭제된다"). 계획 단계에서 걸러야 dry-run에도 "이미 있음"이 보이고, 재실행·배치 내
+    # 충돌이 예방된다. init 마법사도 같은 함수를 공유한다.
+    native_dir, items, skipped = gather_adoption(project_root)
+    if not native_dir.is_dir():
+        console.print(f"네이티브 메모리가 없습니다: {native_dir}")
+        raise typer.Exit()
+    if not items and not skipped:
+        console.print(f"이관할 네이티브 메모리가 없습니다: {native_dir}")
+        raise typer.Exit()
+
+    _print_adoption_plan(project_root, native_dir, items, skipped, disable_native=disable_native)
+
+    if dry_run:
+        console.print("\n적용하려면 [cyan]--dry-run[/cyan] 없이 다시 실행하세요.")
+        return
+
+    backup = apply_adoption(project_root, items, disable_native=disable_native)
+    injected = sum(1 for i in items if i.entry.state is MemoryState.INDEXED)
+    pending = sum(1 for i in items if i.entry.state is MemoryState.PENDING)
+    console.print(
+        f"\n[green]✓[/green] 이관 {len(items)}건 "
+        f"(주입 {injected} · 리뷰 대기 {pending} · 보관 {len(items) - injected - pending})"
+    )
+    if disable_native:
+        console.print("[green]✓[/green] 네이티브 자동로드 끔 (autoMemoryEnabled=false)")
+        if backup:
+            console.print(f"   백업: {backup}")
+    console.print(
+        "   리뷰 대기 확인: [cyan]pouch memory list[/cyan] · "
+        "올리기: [cyan]pouch memory promote <이름>[/cyan]"
+    )
 
 
 @app.command("context")

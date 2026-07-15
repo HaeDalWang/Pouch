@@ -129,6 +129,36 @@ def with_recipe_removed(settings: dict, recipe: dict) -> dict:
     return updated
 
 
+# 네이티브 메모리 스위치 — Claude Code 기본 메모리를 끄는 settings 키.
+# false면 네이티브가 읽기·쓰기를 모두 멈춰(자동로드 주입 없음), pouch가 자리를 대체한다.
+# 공식 docs 확인 완료(code.claude.com/docs/en/settings.md): boolean·default true·
+# "does not read from or write to the auto memory directory". env CLAUDE_CODE_DISABLE_AUTO_MEMORY도 동일.
+NATIVE_MEMORY_KEY = "autoMemoryEnabled"
+
+
+def is_native_memory_disabled(settings: dict) -> bool:
+    """Claude 네이티브 메모리가 꺼져 있는지(pouch가 대체 중인지)."""
+    return settings.get(NATIVE_MEMORY_KEY) is False
+
+
+def with_native_memory_disabled(settings: dict) -> dict:
+    """네이티브 메모리를 끈 새 설정을 반환한다(멱등·기존 보존). A안 §1."""
+    if is_native_memory_disabled(settings):
+        return settings
+    updated = copy.deepcopy(settings)
+    updated[NATIVE_MEMORY_KEY] = False
+    return updated
+
+
+def with_native_memory_enabled(settings: dict) -> dict:
+    """네이티브 메모리 스위치를 걷어낸 새 설정(되돌리기 — 키 제거로 기본값 복원)."""
+    if NATIVE_MEMORY_KEY not in settings:
+        return settings
+    updated = copy.deepcopy(settings)
+    updated.pop(NATIVE_MEMORY_KEY, None)
+    return updated
+
+
 def write_settings(path: Path, settings: dict) -> Path | None:
     """설정을 기록한다. 기존 파일이 있었으면 백업하고 그 경로를 반환한다."""
     path.parent.mkdir(parents=True, exist_ok=True)

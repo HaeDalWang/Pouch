@@ -65,3 +65,36 @@ def test_init_is_idempotent(workspace: Path) -> None:
     # Assert — role 메모리는 하나 (덮어씀)
     roles = [m for m in MemoryStore().list() if m.name == "role"]
     assert len(roles) == 1
+
+
+def _seed_native_feedback(project: Path) -> None:
+    from pouch import paths
+
+    native = paths.claude_project_memory_dir(project)
+    native.mkdir(parents=True)
+    (native / "feedback_stop.md").write_text(
+        '---\nname: stop-here\ndescription: "d"\nmetadata:\n  type: feedback\n---\n본문\n',
+        encoding="utf-8",
+    )
+
+
+def test_init_offers_adopt_migrates_but_keeps_native(workspace: Path) -> None:
+    # 네이티브 메모리가 있으면 init(--yes)이 pouch로 옮긴다 — 단 네이티브는 안전망으로
+    # 그대로 둔다(기본은 옮기기만, 다른 도구 설정을 기본으로 끄지 않음).
+    from pouch import paths
+    from pouch.hooks.settings import is_native_memory_disabled, load_settings
+
+    _seed_native_feedback(workspace / "proj")
+
+    result = runner.invoke(app, ["init", "--role", "개발자", "--yes"])
+    assert result.exit_code == 0, result.stdout
+
+    assert "stop-here" in {m.name for m in MemoryStore().list()}
+    assert not is_native_memory_disabled(load_settings(paths.claude_settings_path()))
+
+
+def test_init_without_native_memory_is_silent(workspace: Path) -> None:
+    # 네이티브 메모리가 없으면 adopt 제안이 조용히 지나간다(init은 관문 아님).
+    result = runner.invoke(app, ["init", "--role", "개발자", "--yes"])
+    assert result.exit_code == 0, result.stdout
+    assert "네이티브 메모리" not in result.stdout

@@ -130,3 +130,22 @@ def test_checkpoint_note_failure_still_preserves_checkpoint() -> None:
 
     out = render_session_context([], note_zone=_boom)
     assert "Alignment Checkpoint" in out
+
+
+def test_how_to_remember_always_injected() -> None:
+    # 기억이 0개여도 "새 기억 남기는 법"은 고정 구역에 실린다(native 대체 시 쓰기 경로).
+    out = render_session_context([])
+    assert "How to remember" in out
+    assert "pouch memory add" in out
+
+
+def test_how_to_remember_in_fixed_zone_below_boundary() -> None:
+    # 배치: 경계(안전 최우선)가 쓰기 지침보다 위. 지침은 고정 구역 안.
+    out = render_session_context([_boundary()])
+    assert out.index("Autonomy Boundaries") < out.index("How to remember")
+
+
+def test_how_to_remember_above_note_zone() -> None:
+    # 쓰기 지침(고정 구역)은 제안 쪽지(무시 가능 구역)보다 위.
+    out = render_session_context([], note_zone=lambda: "🦦 정리할 게 쌓였어요")
+    assert out.index("How to remember") < out.index("🦦 정리할 게 쌓였어요")

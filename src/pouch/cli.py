@@ -12,6 +12,7 @@ from rich.console import Console
 from pouch import __version__
 from pouch.backup.commands import backup as backup_command
 from pouch.backup.commands import restore as restore_command
+from pouch.boundary.commands import app as boundary_app
 from pouch.catalog.commands import app as catalog_app
 from pouch.checkpoint.commands import app as checkpoint_app
 from pouch.evolution.commands import app as evolve_app
@@ -29,6 +30,7 @@ app = typer.Typer(
 console = Console()
 
 app.add_typer(memory_app, name="memory", help="🧠 메모리 — 쓸수록 쌓이는 개인 기억.")
+app.add_typer(boundary_app, name="boundary", help="🚧 경계 — 자율성의 허용·확인·금지.")
 app.add_typer(catalog_app, name="catalog", help="📦 catalog — 주머니에 담을 수 있는 것의 레지스트리.")
 app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리.")
 app.add_typer(evolve_app, name="evolve", help="🌊 evolve — 쓸수록 손에 맞게, 안 쓰는 건 정리.")
@@ -37,6 +39,20 @@ app.add_typer(sets_app, name="set", help="🎒 set — 미리 꾸려진 한 벌(
 app.command(name="init", help="🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다.")(init_command)
 app.command(name="backup", help="💾 전역 주머니를 아카이브로 백업한다.")(backup_command)
 app.command(name="restore", help="💾 백업 아카이브로 주머니를 되돌린다.")(restore_command)
+
+
+@app.command(name="report", help="📊 리포트 — 기간별로 뭘 쓰고 뭐가 닳는지 보여준다.")
+def _report(
+    days: int = typer.Option(7, "--days", "-d", help="집계 기간(일)."),
+) -> None:
+    """기간별 주머니 리포트(시계는 이 경계에서만 읽는다). read-only."""
+    from datetime import datetime
+
+    from pouch.report import gather_report, render_report_lines
+
+    now = datetime.now().isoformat(timespec="seconds")
+    for line in render_report_lines(gather_report(now=now, window_days=days)):
+        console.print(line)
 
 
 def _version_callback(value: bool) -> None:  # noqa: FBT001

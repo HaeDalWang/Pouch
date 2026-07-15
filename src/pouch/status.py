@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from pouch.catalog.model import Ownership, ToolEntry, alias_map
 from pouch.evolution.aggregate import aggregate_usage, canonicalize_stats, events_within
+from pouch.evolution.core_tools import core_entry_ids
 from pouch.evolution.usage_log import UsageEvent
 
 _RECENT_WINDOW_DAYS = 7
@@ -45,6 +46,7 @@ class PouchStatus:
     linked: int
     staged_count: int  # 소스에 재워뒀지만 아직 카탈로그로 진입 안 한 것(가리키기만 한 것)
     active_count: int
+    core_count: int  # 지속·빈도로 손에 맞은 핵심 도구 수(전체 이력 기준)
     recent_total: int  # 최근 창 안의 총 사용 횟수
     recent_top: tuple[tuple[str, int], ...]  # (entry_id, count) 상위
     outside_pouch: tuple[str, ...]  # 최근 쓰였는데 카탈로그 밖 (attach 신호)
@@ -69,11 +71,14 @@ def build_status(
     for entry in entries:
         by_ownership[entry.ownership] += 1
 
+    aliases = alias_map(entries)
     recent = events_within(events, now=now, window_days=_RECENT_WINDOW_DAYS)
     # 런타임 별칭(plugin_<플러그인>_<서버>)을 카탈로그 정식 id로 접어 비교한다.
-    stats = canonicalize_stats(aggregate_usage(recent), alias_map(entries))
+    stats = canonicalize_stats(aggregate_usage(recent), aliases)
     ranked = sorted(stats.items(), key=lambda item: (-item[1].count, item[0]))
     catalog_ids = {entry.id for entry in entries}
+    # 핵심 도구는 전체 이력 기준(최근 창 아님) — 조용한 주에도 손에 맞은 건 핵심.
+    core = core_entry_ids(events, alias_map=aliases) & catalog_ids
 
     return PouchStatus(
         version=version,
@@ -86,6 +91,7 @@ def build_status(
         linked=by_ownership[Ownership.LINKED],
         staged_count=staged_count,
         active_count=len(active_ids & catalog_ids),
+        core_count=len(core),
         recent_total=len(recent),
         recent_top=tuple((eid, stat.count) for eid, stat in ranked[:_TOP_N]),
         outside_pouch=tuple(sorted(eid for eid in stats if eid not in catalog_ids)),
@@ -233,6 +239,10 @@ def _render_pouch(status: PouchStatus) -> list[str]:
         lines.append(
             f"  {_INDENT}[dim]+ 소스 {status.staged_count}개 대기[/dim]"
             "  → [cyan]pouch catalog list --sources[/cyan]"
+        )
+    if status.core_count:
+        lines.append(
+            f"  {_INDENT}[dim]핵심 도구 {status.core_count}개 — 손에 맞아 정리에서 보호[/dim]"
         )
     lines.append(f"{_label('기억')}{status.memory_count}개")
     for preview in status.memory_preview:

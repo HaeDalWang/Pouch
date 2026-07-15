@@ -126,3 +126,39 @@ def test_usage_hook_remove_keeps_session_start() -> None:
     removed = with_usage_hook_removed(settings)
     assert not is_usage_hook_installed(removed)
     assert is_installed(removed)  # SessionStart는 남는다
+
+
+# ── 네이티브 메모리 스위치(A안 §1: pouch가 대체) ─────────────────────────
+
+
+def test_native_memory_disable_sets_flag_false() -> None:
+    from pouch.hooks.settings import is_native_memory_disabled, with_native_memory_disabled
+
+    out = with_native_memory_disabled({})
+    assert out["autoMemoryEnabled"] is False
+    assert is_native_memory_disabled(out)
+
+
+def test_native_memory_disable_is_idempotent_and_pure() -> None:
+    from pouch.hooks.settings import with_native_memory_disabled
+
+    base = {"autoMemoryEnabled": False, "other": 1}
+    assert with_native_memory_disabled(base) is base  # 이미 꺼짐 → 그대로
+
+
+def test_native_memory_disable_preserves_existing_and_input_unchanged() -> None:
+    from pouch.hooks.settings import with_native_memory_disabled
+
+    base = {"hooks": {"x": 1}}
+    out = with_native_memory_disabled(base)
+    assert out["hooks"] == {"x": 1}
+    assert base == {"hooks": {"x": 1}}  # 입력 불변
+
+
+def test_native_memory_enable_removes_flag() -> None:
+    from pouch.hooks.settings import is_native_memory_disabled, with_native_memory_enabled
+
+    out = with_native_memory_enabled({"autoMemoryEnabled": False, "k": 2})
+    assert "autoMemoryEnabled" not in out
+    assert out["k"] == 2
+    assert not is_native_memory_disabled(out)

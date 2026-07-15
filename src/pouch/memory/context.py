@@ -41,8 +41,11 @@ def render_session_context(
       생존 ③a, 위로도 못 옴 ①). note_zone이 None이거나 빈 내용이면 쪽지 구역은
       아예 안 그려진다(문턱 미달 = 글자 0, 구분선조차 없음 ②).
     """
-    # 고정 구역 먼저 — 실패는 여기서 전파(③b). 규약은 entries 유무와 독립 주입.
-    fixed = render_context(entries, extra_fixed=render_checkpoint_protocol(anchor))
+    # 고정 구역 먼저 — 실패는 여기서 전파(③b). 규약·쓰기 지침은 entries 유무와 독립 주입.
+    fixed = render_context(
+        entries,
+        extra_fixed=render_checkpoint_protocol(anchor) + render_how_to_remember(),
+    )
     if note_zone is None:
         return fixed
 
@@ -56,6 +59,32 @@ def render_session_context(
 
     # 쪽지는 항상 고정 구역 아래(①). 구분선은 내용이 있을 때만 등장.
     return fixed.rstrip() + "\n\n---\n\n" + note.strip() + "\n"
+
+
+def render_how_to_remember() -> list[str]:
+    """새 기억을 pouch에 남기는 법을 심는 고정 구역 지침(마크다운 줄 리스트).
+
+    pouch가 Claude 네이티브 메모리를 대체하면(adopt --disable-native) 에이전트의 자율
+    쓰기 경로가 사라진다 — 네이티브는 read-only 분리가 안 돼 끄면 쓰기까지 죽기 때문.
+    이 지침이 그 자리를 메운다: 에이전트가 스스로 `pouch memory add`로 기억을 남기게
+    한다(대체 설계 §3의 단기 해법). boundary·checkpoint 규약과 같은 고정 구역·영어
+    지침이다 — 도구(GPT·Gemini 등)를 가리지 않고 준수가 더 안정적이라. 채우는 값은
+    사용자 언어(한글)로 쓰라고 명시한다(라벨은 기계를 위해, 값은 사람을 위해).
+    """
+    return [
+        "## How to remember (persist across sessions)",
+        "",
+        "pouch is this agent's memory layer. When you learn something worth "
+        "carrying into future sessions — a stable fact about the user, a reusable "
+        "fix, an autonomy boundary — record it yourself, without being asked:",
+        "```",
+        'pouch memory add -n <kebab-name> -d "<summary>" -b "<body>" '
+        "-t <user|feedback|project|reference|boundary> -s <global|project>",
+        "```",
+        "Write the summary and body in the user's language. Pick the type honestly "
+        "(feedback = how the user wants you to work; boundary = an autonomy limit).",
+        "",
+    ]
 
 
 def render_context(

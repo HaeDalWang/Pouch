@@ -30,6 +30,17 @@ def catalog_dir() -> Path:
     return global_root() / "catalog"
 
 
+def project_catalog_dir(start: Path | None = None) -> Path | None:
+    """현재 프로젝트의 카탈로그(`<repo>/.pouch/catalog/`). 프로젝트 밖이면 None.
+
+    프로젝트별 주머니 — 전역 카탈로그(catalog_dir)의 프로젝트 스코프 짝. 그 repo에서만
+    통하는 도구가 산다(멀티 클라이언트: 클라이언트 도구 vs 내부 도구 분리). memory가
+    global/project 2계층인 것과 같은 확장이다. `.pouch/`라 로컬 전용·백업 제외.
+    """
+    root = find_project_root(start)
+    return (root / ".pouch" / "catalog") if root else None
+
+
 def sources_dir() -> Path:
     """소스 스테이징 디렉토리(`~/.pouch/sources/`) — 관문 (다)의 "가리키기" 자리.
 
@@ -56,6 +67,17 @@ def usage_log_path() -> Path:
     카탈로그(레지스트리)와 분리된 append-only 라이프사이클 레이어.
     """
     return global_root() / "usage.jsonl"
+
+
+def project_usage_log_path(start: Path | None = None) -> Path | None:
+    """현재 프로젝트의 로컬 사용 로그(`<repo>/.pouch/usage.jsonl`). 프로젝트 밖이면 None.
+
+    맥락 개인화(레인 2a)의 P3 프라이버시 자리 — 프로젝트별 사용 기록은 그 repo의
+    `.pouch/`에만 남긴다(로컬 전용). 전역 백업(`~/.pouch`)엔 안 들어가므로 프로젝트
+    경로·맥락이 클라우드로 새지 않는다("프로젝트 `.pouch`는 클라우드 안 나간다"와 정렬).
+    """
+    root = find_project_root(start)
+    return (root / ".pouch" / "usage.jsonl") if root else None
 
 
 def usage_summary_path() -> Path:
@@ -130,6 +152,19 @@ def claude_settings_path() -> Path:
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     base = Path(override).expanduser() if override else Path.home() / ".claude"
     return base / "settings.json"
+
+
+def claude_project_memory_dir(project_root: Path) -> Path:
+    """주어진 프로젝트 루트의 Claude 네이티브 메모리 디렉토리.
+
+    네이티브는 프로젝트 경로를 슬러그(`/`→`-`)로 접어 `~/.claude/projects/<슬러그>/memory/`에
+    담는다. adopt(대체 A안 §2)가 이 자리를 훑어 pouch로 이관한다. `CLAUDE_CONFIG_DIR`로
+    베이스를 오버라이드할 수 있다(테스트/대체 설치 위치).
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    slug = str(project_root.resolve()).replace("/", "-")
+    return base / "projects" / slug / "memory"
 
 
 def claude_skills_dir() -> Path:

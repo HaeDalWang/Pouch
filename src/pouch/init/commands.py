@@ -6,10 +6,14 @@
 
 from __future__ import annotations
 
+from datetime import date
+from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.markup import escape
 
+from pouch import paths
 from pouch.hosts.base import FileHostAdapter, HostAdapter
 from pouch.hosts.registry import (
     all_names,
@@ -106,7 +110,85 @@ def init(
     console.print(f"[green]✓[/green] {len(memories)}개 기억을 담았습니다.")
 
     _maybe_offer_set(answers, yes=yes)
+    _maybe_offer_adopt(yes=yes)
+    _maybe_offer_boundaries(yes=yes)
     _maybe_link_hook(yes=yes)
+
+
+def _maybe_offer_boundaries(*, yes: bool) -> None:
+    """흔한 안전 경계를 제안한다 — 고른 것만 담긴다(대화형 전용).
+
+    `--yes`(비대화형)에선 건너뛴다: 경계는 감지된 사실이 아니라 사용자가 고르는 선호라,
+    확인 없이 강요하지 않는다("지어낸 세트 안 담는다" 철학과 같은 정신 — 기본값 아닌
+    물어보기). 이미 걸린 이름은 후보에서 빼 중복 제안을 막는다.
+    """
+    if yes:
+        return
+
+    import questionary
+
+    from pouch.boundary.templates import BOUNDARY_TEMPLATES, to_memory
+    from pouch.memory.model import MemoryType
+
+    store = MemoryStore()
+    existing = {m.name for m in store.list() if m.type is MemoryType.BOUNDARY}
+    candidates = [t for t in BOUNDARY_TEMPLATES if t.name not in existing]
+    if not candidates:
+        return
+
+    choices = [
+        questionary.Choice(f"[{t.direction.value.upper()}] {t.description}", value=t.name)
+        for t in candidates
+    ]
+    picked = questionary.checkbox(
+        "🚧 자율성 경계를 걸어둘까요? (스페이스로 고르고 엔터 — 안 골라도 됩니다)",
+        choices=choices,
+    ).ask()
+    if not picked:
+        console.print("   경계는 나중에 [cyan]pouch boundary add[/cyan] 로 걸 수 있습니다.")
+        return
+
+    by_name = {t.name: t for t in candidates}
+    today = date.today()
+    for name in picked:
+        store.save(to_memory(by_name[name], now=today))
+    console.print(f"[green]✓[/green] 경계 {len(picked)}개를 걸었습니다.")
+
+
+def _maybe_offer_adopt(*, yes: bool) -> None:
+    """현재 프로젝트에 Claude 네이티브 메모리가 있으면 pouch로 이관을 제안한다.
+
+    없으면 조용히 지나간다(init은 관문이 아니다). 넘기면 매 세션 주입은 안정 핵심만
+    남고(project 세션로그는 리뷰 대기), **네이티브는 안전망으로 그대로 둔다**(기본은
+    옮기기만) — 다른 도구 설정을 기본으로 끄는 건 공격적이고, 새 기억이 흘러들 쓰기
+    길이 실사용으로 검증된 뒤 별도 조각에서 끄기를 기본화한다. 완전 대체는 사용자가
+    `pouch memory adopt --disable-native`로 명시 선택. CLI adopt와 같은 로직을 공유한다.
+    """
+    from pouch.memory.commands import apply_adoption, gather_adoption
+    from pouch.memory.model import MemoryState
+
+    project_root = paths.find_project_root() or Path.cwd()
+    _native_dir, items, _skipped = gather_adoption(project_root)
+    if not items:
+        return  # 넘길 게 없으면 조용히 지나감
+
+    injected = sum(1 for item in items if item.entry.state is MemoryState.INDEXED)
+    console.print(
+        f"\n🧠 Claude 네이티브 메모리 [bold]{len(items)}[/bold]건 발견 — "
+        f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 주입 안 함·recall 가능)."
+    )
+    if not yes and not typer.confirm(
+        "지금 pouch로 넘길까요? (원본·Claude 자동로드는 안전망으로 그대로 둡니다)", default=True
+    ):
+        console.print("   나중에 [cyan]pouch memory adopt[/cyan] 로 넘길 수 있습니다.")
+        return
+
+    apply_adoption(project_root, items, disable_native=False)
+    console.print(
+        f"[green]✓[/green] 네이티브 메모리 {len(items)}건을 pouch로 옮겼습니다 "
+        "(Claude 자동로드는 안전망으로 그대로 — 완전 대체는 "
+        "[cyan]pouch memory adopt --disable-native[/cyan])."
+    )
 
 
 def _maybe_offer_set(answers: InitAnswers, *, yes: bool) -> None:
