@@ -8,9 +8,14 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from pouch.memory.adopt import AdoptionItem, SkippedNative, plan_native_file
+from pouch.memory.adopt import (
+    AdoptionItem,
+    SkippedNative,
+    partition_existing,
+    plan_native_file,
+)
 from pouch.memory.commands import app
-from pouch.memory.model import MemoryScope, MemoryState, MemoryType
+from pouch.memory.model import MemoryEntry, MemoryScope, MemoryState, MemoryType
 
 runner = CliRunner()
 
@@ -134,6 +139,49 @@ def test_created_and_body_preserved() -> None:
     assert "본문 내용" in item.entry.body
 
 
+def test_empty_description_becomes_empty_string_not_none() -> None:
+    # 빈 description(YAML None)이 문자열 "None"으로 저장되지 않는다.
+    text = "---\nname: x\ndescription:\nmetadata:\n  type: user\n---\n본문\n"
+    item = _plan(text)
+    assert isinstance(item, AdoptionItem)
+    assert item.entry.description == ""
+
+
+# ── 덮어쓰기 방지(partition_existing) ────────────────────────────────────
+
+
+def _item(name: str, scope: MemoryScope = MemoryScope.GLOBAL) -> AdoptionItem:
+    return AdoptionItem(
+        entry=MemoryEntry(name=name, description="d", body="b", type=MemoryType.USER, scope=scope),
+        source_path=f"/n/{name}.md",
+        reason="r",
+    )
+
+
+def test_partition_skips_existing_pouch_memory() -> None:
+    kept, skipped = partition_existing(
+        [_item("a"), _item("b")], existing={("a", MemoryScope.GLOBAL)}
+    )
+    assert [i.entry.name for i in kept] == ["b"]
+    assert len(skipped) == 1
+    assert "이미 pouch에 있음" in skipped[0].reason
+
+
+def test_partition_dedups_within_batch() -> None:
+    kept, skipped = partition_existing([_item("a"), _item("a")], existing=set())
+    assert [i.entry.name for i in kept] == ["a"]
+    assert len(skipped) == 1
+    assert "배치 내" in skipped[0].reason
+
+
+def test_partition_same_name_different_scope_both_kept() -> None:
+    kept, skipped = partition_existing(
+        [_item("a", MemoryScope.GLOBAL), _item("a", MemoryScope.PROJECT)], existing=set()
+    )
+    assert len(kept) == 2
+    assert skipped == []
+
+
 # ── CLI 통합 ─────────────────────────────────────────────────────────────
 
 
@@ -215,3 +263,55 @@ def test_adopt_no_native_dir_exits_cleanly(workspace: Path) -> None:
     result = runner.invoke(app, ["adopt"])
     assert result.exit_code == 0, result.stdout
     assert "없습니다" in result.stdout
+
+
+def test_adopt_rerun_does_not_reset_promoted(workspace: Path) -> None:
+    # #1 회귀: 재실행이 사용자가 promote한 상태를 PENDING으로 되돌리지 않는다.
+    from pouch.memory.store import MemoryStore
+
+    project = workspace / "proj"
+    _seed_native(project)
+    runner.invoke(app, ["adopt"])  # 1차: project 기억은 PENDING
+
+    store = MemoryStore(project_dir=project / ".pouch" / "memory")
+    store.promote(store.get("log_260601", MemoryScope.PROJECT))
+    assert store.get("log_260601", MemoryScope.PROJECT).state is MemoryState.INDEXED
+
+    result = runner.invoke(app, ["adopt"])  # 2차
+    assert result.exit_code == 0, result.stdout
+    assert store.get("log_260601", MemoryScope.PROJECT).state is MemoryState.INDEXED
+
+
+def test_adopt_does_not_overwrite_existing_pouch_memory(workspace: Path) -> None:
+    # #1 회귀: native 이름이 기존 pouch 기억과 겹쳐도 기존 것을 덮지 않는다.
+    from pouch.memory.store import MemoryStore
+
+    project = workspace / "proj"
+    _seed_native(project)
+    store = MemoryStore(project_dir=project / ".pouch" / "memory")
+    store.save(
+        MemoryEntry(
+            name="stop-here", description="내 것", body="원래 내용",
+            type=MemoryType.FEEDBACK, scope=MemoryScope.GLOBAL,
+        )
+    )
+
+    result = runner.invoke(app, ["adopt"])
+    assert result.exit_code == 0, result.stdout
+    assert store.get("stop-here", MemoryScope.GLOBAL).body == "원래 내용"  # 안 덮임
+
+
+def test_adopt_from_path_reads_that_project(workspace: Path) -> None:
+    # #2 회귀: --from으로 다른(서브디렉토리 등) 프로젝트의 네이티브를 이관한다.
+    from pouch.memory.store import MemoryStore
+
+    other = workspace / "other"
+    (other / ".git").mkdir(parents=True)
+    _seed_native(other)
+
+    result = runner.invoke(app, ["adopt", "--from", str(other), "--no-disable-native"])
+    assert result.exit_code == 0, result.stdout
+
+    names = {e.name for e in MemoryStore(project_dir=other / ".pouch" / "memory").list()}
+    assert "stop-here" in names
+    assert "log_260601" in names
