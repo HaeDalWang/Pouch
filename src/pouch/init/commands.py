@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.markup import escape
 
+from pouch import paths
 from pouch.hosts.base import FileHostAdapter, HostAdapter
 from pouch.hosts.registry import (
     all_names,
@@ -75,7 +78,41 @@ def init(
     console.print(f"[green]✓[/green] {len(memories)}개 기억을 담았습니다.")
 
     _maybe_offer_set(answers, yes=yes)
+    _maybe_offer_adopt(yes=yes)
     _maybe_link_hook(yes=yes)
+
+
+def _maybe_offer_adopt(*, yes: bool) -> None:
+    """현재 프로젝트에 Claude 네이티브 메모리가 있으면 pouch로 이관을 제안한다.
+
+    없으면 조용히 지나간다(init은 관문이 아니다). 넘기면 매 세션 주입은 안정 핵심만
+    남고(project 세션로그는 리뷰 대기), 네이티브 자동로드는 꺼진다(pouch가 대체) —
+    끄는 건 .bak 백업이 있어 가역이다. CLI `pouch memory adopt`와 같은 로직을 공유한다.
+    """
+    from pouch.memory.commands import apply_adoption, gather_adoption
+    from pouch.memory.model import MemoryState
+
+    project_root = paths.find_project_root() or Path.cwd()
+    _native_dir, items, _skipped = gather_adoption(project_root)
+    if not items:
+        return  # 넘길 게 없으면 조용히 지나감
+
+    injected = sum(1 for item in items if item.entry.state is MemoryState.INDEXED)
+    console.print(
+        f"\n🧠 Claude 네이티브 메모리 [bold]{len(items)}[/bold]건 발견 — "
+        f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 리뷰 대기)."
+    )
+    if not yes and not typer.confirm(
+        "지금 pouch로 넘길까요? (Claude 자동로드는 꺼집니다)", default=True
+    ):
+        console.print("   나중에 [cyan]pouch memory adopt[/cyan] 로 넘길 수 있습니다.")
+        return
+
+    apply_adoption(project_root, items, disable_native=True)
+    console.print(
+        f"[green]✓[/green] 네이티브 메모리 {len(items)}건 이관 · 자동로드 껐습니다 "
+        "([cyan]pouch memory list[/cyan]로 확인)."
+    )
 
 
 def _maybe_offer_set(answers: InitAnswers, *, yes: bool) -> None:
