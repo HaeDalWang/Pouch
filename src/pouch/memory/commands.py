@@ -187,6 +187,58 @@ def promote(
     raise typer.Exit(code=1)
 
 
+def gather_adoption(
+    project_root: Path,
+) -> tuple[Path, list[AdoptionItem], list[SkippedNative]]:
+    """네이티브를 훑어 이관 계획을 낸다(저장은 안 함). native_dir·이관목록·건너뜀 반환.
+
+    덮어쓰기 방지(partition_existing)까지 적용해서, 반환하는 items는 실제로 저장할 것만.
+    native_dir가 없으면 빈 리스트로 돌려준다(호출부가 판단). 파일 읽기만 하고 쓰기는
+    안 한다 — CLI(`adopt`)와 init 마법사가 같은 계획 로직을 공유한다.
+    """
+    native_dir = paths.claude_project_memory_dir(project_root)
+    if not native_dir.is_dir():
+        return native_dir, [], []
+
+    items: list[AdoptionItem] = []
+    skipped: list[SkippedNative] = []
+    for path in sorted(p for p in native_dir.glob("*.md") if p.name != "MEMORY.md"):
+        created = date.fromtimestamp(path.stat().st_mtime)
+        result = plan_native_file(
+            path.read_text(encoding="utf-8"),
+            source_path=str(path),
+            stem=path.stem,
+            created=created,
+        )
+        if isinstance(result, AdoptionItem):
+            items.append(result)
+        else:
+            skipped.append(result)
+
+    existing = {
+        (e.name, e.scope)
+        for e in MemoryStore(project_dir=project_root / ".pouch" / "memory").list()
+    }
+    items, existing_skips = partition_existing(items, existing=existing)
+    return native_dir, items, skipped + existing_skips
+
+
+def apply_adoption(
+    project_root: Path, items: list[AdoptionItem], *, disable_native: bool
+) -> Path | None:
+    """이관 계획을 저장하고(save_many), 옵션대로 네이티브 자동로드를 끈다. .bak 경로 반환."""
+    MemoryStore(project_dir=project_root / ".pouch" / "memory").save_many(
+        item.entry for item in items
+    )
+    if not disable_native:
+        return None
+    settings_path = paths.claude_settings_path()
+    settings = load_settings(settings_path)
+    if is_native_memory_disabled(settings):
+        return None
+    return write_settings(settings_path, with_native_memory_disabled(settings))
+
+
 def _print_adoption_plan(
     project_root: Path,
     native_dir: Path,
@@ -245,37 +297,16 @@ def adopt(
     시계(mtime→created)는 이 경계에서만 읽는다.
     """
     project_root = from_path.resolve() if from_path else (paths.find_project_root() or Path.cwd())
-    native_dir = paths.claude_project_memory_dir(project_root)
+    # gather_adoption이 계획 계산 + 덮어쓰기 방지(partition_existing)까지 한다("떨어진다 ≠
+    # 삭제된다"). 계획 단계에서 걸러야 dry-run에도 "이미 있음"이 보이고, 재실행·배치 내
+    # 충돌이 예방된다. init 마법사도 같은 함수를 공유한다.
+    native_dir, items, skipped = gather_adoption(project_root)
     if not native_dir.is_dir():
         console.print(f"네이티브 메모리가 없습니다: {native_dir}")
         raise typer.Exit()
-
-    files = sorted(p for p in native_dir.glob("*.md") if p.name != "MEMORY.md")
-    if not files:
+    if not items and not skipped:
         console.print(f"이관할 네이티브 메모리가 없습니다: {native_dir}")
         raise typer.Exit()
-
-    items: list[AdoptionItem] = []
-    skipped: list[SkippedNative] = []
-    for path in files:
-        created = date.fromtimestamp(path.stat().st_mtime)
-        result = plan_native_file(
-            path.read_text(encoding="utf-8"),
-            source_path=str(path),
-            stem=path.stem,
-            created=created,
-        )
-        if isinstance(result, AdoptionItem):
-            items.append(result)
-        else:
-            skipped.append(result)
-
-    # 덮어쓰기 방지 — 이미 pouch에 있는 이름은 이관에서 빼고 보고한다("떨어진다 ≠ 삭제된다").
-    # 계획 단계에서 걸러야 dry-run에도 "이미 있음"이 보이고, 재실행·배치 내 충돌이 예방된다.
-    store = MemoryStore(project_dir=project_root / ".pouch" / "memory")
-    existing = {(e.name, e.scope) for e in store.list()}
-    items, existing_skips = partition_existing(items, existing=existing)
-    skipped += existing_skips
 
     _print_adoption_plan(project_root, native_dir, items, skipped, disable_native=disable_native)
 
@@ -283,15 +314,7 @@ def adopt(
         console.print("\n적용하려면 [cyan]--dry-run[/cyan] 없이 다시 실행하세요.")
         return
 
-    store.save_many(item.entry for item in items)
-
-    backup: Path | None = None
-    if disable_native:
-        settings_path = paths.claude_settings_path()
-        settings = load_settings(settings_path)
-        if not is_native_memory_disabled(settings):
-            backup = write_settings(settings_path, with_native_memory_disabled(settings))
-
+    backup = apply_adoption(project_root, items, disable_native=disable_native)
     injected = sum(1 for i in items if i.entry.state is MemoryState.INDEXED)
     console.print(
         f"\n[green]✓[/green] 이관 {len(items)}건 "
