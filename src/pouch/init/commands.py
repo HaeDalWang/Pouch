@@ -21,37 +21,64 @@ from pouch.hosts.registry import (
     detect_hook_installed,
 )
 from pouch.init.detect import Environment, detect_environment
-from pouch.init.profile import InitAnswers, build_memories
+from pouch.init.profile import InitAnswers, build_memories, reflect
 from pouch.memory.store import MemoryStore
 
 console = Console()
 
-_ROLES = ["개발자", "DevOps·인프라", "기획·PM", "디자인", "데이터·ML", "기타"]
+# 스타일 선택지 — 라벨(사람이 고름) → 키(profile이 지시문으로 변환).
+_STYLE_CHOICES = [
+    ("친절하게, 맥락 설명하면서", "warm"),
+    ("짧고 건조하게, 맞는 말만", "dry"),
+    ("중간", "mid"),
+]
 
 
 def ask_profile(env: Environment) -> InitAnswers:
-    """questionary로 역할·스택·작업 스타일을 묻는다(대화형 경로)."""
+    """questionary로 세 축(역할/방향·스타일·경계)을 묻는다(대화형 경로).
+
+    역할은 고정 선택지가 아니라 자유 입력이다 — 감지가 자신있게 틀리는 자리라
+    (역할·궤적) 사람 말로 받는다. 경계는 비우면(엔터) 줄을 안 만든다.
+    """
     import questionary
 
-    role = questionary.select("역할이 어떻게 되세요?", choices=_ROLES).ask()
+    role = questionary.text(
+        "지금 주로 뭘 하고, 앞으로 뭘 해보고 싶으세요?"
+    ).ask()
     detected = {runtime.name for runtime in env.runtimes if runtime.version}
     stack_choices = [
         questionary.Choice(runtime.name, checked=runtime.name in detected)
         for runtime in env.runtimes
     ] or [questionary.Choice("기타")]
     stacks = questionary.checkbox("주력 스택을 골라주세요", choices=stack_choices).ask()
-    work_style = questionary.text("작업 스타일을 한 줄로 (선택, 엔터로 건너뛰기):").ask()
+    style_label = questionary.select(
+        "에이전트가 어떻게 말했으면 좋겠어요?",
+        choices=[label for label, _ in _STYLE_CHOICES],
+    ).ask()
+    boundary = questionary.text(
+        "절대 안 했으면 하는 거 있어요? (나중에 바꿀 수 있어요 · 엔터로 건너뛰기)"
+    ).ask()
     return InitAnswers(
-        role=role or "기타",
+        role=(role or "").strip() or "미입력",
         stacks=tuple(stacks or ()),
-        work_style=(work_style or "").strip() or None,
+        style=_style_key(style_label),
+        boundary=(boundary or "").strip() or None,
     )
 
 
+def _style_key(label: str | None) -> str | None:
+    """선택 라벨을 profile이 아는 스타일 키로 되돌린다."""
+    for choice_label, key in _STYLE_CHOICES:
+        if choice_label == label:
+            return key
+    return None
+
+
 def init(
-    role: str | None = typer.Option(None, "--role", help="역할/직군(주면 비대화형)."),
+    role: str | None = typer.Option(None, "--role", help="지금 하는 일·방향(주면 비대화형)."),
     stack: list[str] = typer.Option(None, "--stack", help="주력 스택(여러 번 지정 가능)."),
-    work_style: str | None = typer.Option(None, "--work-style", help="작업 스타일 한 줄."),
+    style: str | None = typer.Option(None, "--style", help="말투: warm/dry/mid."),
+    boundary: str | None = typer.Option(None, "--boundary", help="절대 안 했으면 하는 것 한 줄."),
     yes: bool = typer.Option(False, "--yes", "-y", help="확인 없이 저장·연결."),
 ) -> None:
     """환경을 감지하고 프로파일을 기억으로 담는다."""
@@ -59,19 +86,23 @@ def init(
     _print_detected(env)
 
     answers = (
-        InitAnswers(role=role, stacks=tuple(stack or ()), work_style=work_style)
+        InitAnswers(
+            role=role, stacks=tuple(stack or ()), style=style, boundary=boundary
+        )
         if role is not None
         else ask_profile(env)
     )
 
-    memories = build_memories(answers, env)
-    console.print("\n[bold]담을 기억[/bold]")
-    for memory in memories:
-        console.print(f"  • [cyan]{memory.name}[/cyan] — {memory.description}")
+    # 되비춤 — 답을 2인칭 서사로 되읽어준다(판정 아님, recognition).
+    console.print()
+    for line in reflect(answers, env):
+        console.print(f"  {escape(line)}")
 
-    if not yes and not typer.confirm("\n이대로 저장할까요?", default=True):
+    if not yes and not typer.confirm("\n맞아요? 이대로 담을까요?", default=True):
         console.print("취소했습니다.")
         raise typer.Exit()
+
+    memories = build_memories(answers, env)
 
     store = MemoryStore()
     for memory in memories:
