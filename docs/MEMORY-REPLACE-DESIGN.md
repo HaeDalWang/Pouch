@@ -150,13 +150,18 @@ pouch memory adopt [--from <경로>] [--dry-run] [--disable-native]
 
 ## 남은 하위 결정
 
+> ⚠️ **아래 "닫힘"은 오너 확인 전이다.** 같이 개발하는 사람이 제안하며 닫은 것으로
+> 적었지만, 오너(배승도)가 말로 되풀어 확인한 적이 없다. 코드가 이미 그렇게 구현됐더라도
+> 결정이 굳은 건 아니다 — 확인 전까지 열린 제안으로 읽는다.
+
 1. **provenance 보존** — `originSessionId`를 새 필드로 남길까, 버릴까.
-2. ~~**세션로그 자동 판별**~~ — **닫힘.** 이름에 유효한 YYMMDD가 박힌 project는 ARCHIVED,
-   없으면 PENDING(`_looks_dated`). 오분류돼도 recall로 복구 가능. 실측 리뷰 큐 45→30.
+2. **세션로그 자동 판별** — 제안: 이름에 유효한 YYMMDD가 박힌 project는 ARCHIVED,
+   없으면 PENDING(`_looks_dated`). 오분류돼도 recall로 복구 가능(실측 리뷰 큐 45→30).
+   **열림 — 오너 확인 대기.**
 3. **repo 역매핑 실패 처리** — project 기억의 원래 repo가 사라졌으면? (global 강등 +
    메모 vs skip vs 별도 보관)
-4. ~~**write 지침 문구·위치**~~ — **닫힘.** 고정 구역(경계·체크포인트 아래)에 영어
-   지침으로 심었다(`render_how_to_remember`). 채우는 값은 사용자 언어로 쓰라고 명시.
+4. **write 지침 문구·위치** — 제안: 고정 구역(경계·체크포인트 아래)에 영어 지침으로
+   심음(`render_how_to_remember`), 채우는 값은 사용자 언어. **열림 — 오너 확인 대기.**
 5. **write 경로 장기안 착수 시점** — 단기 지침으로 버티다 언제 PostToolUse 훅 설계로 갈지.
 
 > 이 문서도 [MEMORY-POSITIONING.md](MEMORY-POSITIONING.md)처럼 결정을 *열어두는* 문서다.

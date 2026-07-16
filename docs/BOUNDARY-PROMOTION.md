@@ -62,13 +62,16 @@ pouch boundary remove <name>     # = 경계 forget
 - **하위호환**: `pouch memory add -t boundary`는 그대로 둔다(안 깨뜨림). `boundary add`가
   승격된 정식 입구.
 
-## 결정됨 — A 구현 완료
+## 구현됨 (오너 확인 전) — A의 형태
+
+> ⚠️ 코드는 이미 났지만 **1급화 방향 자체는 오너(배승도) 확인 전이다.** 아래는
+> 같이 개발하는 사람이 고른 하위 형태 — 방향이 확정되면 여기 근거를 남긴다.
 
 `pouch/boundary/` 패키지 + `cli.py` 등록으로 최상위 `pouch boundary` 명령을 냈다.
 
-1. ~~서브 vs 최상위~~ — **최상위 `pouch boundary`**(1급화 취지). memory 곁다리가 아니라 자기 동사.
-2. ~~list에 archived/pending 표시~~ — **indexed만**. 강등된 경계는 효력이 없어 "지금 내 범위"에서 뺀다.
-3. ~~edit 추가~~ — v0는 **remove + add**로 갈음(불변 값 객체와 결이 같다).
+1. 서브 vs 최상위 — 제안: **최상위 `pouch boundary`**(1급화 취지). memory 곁다리가 아니라 자기 동사.
+2. list에 archived/pending 표시 — 제안: **indexed만**. 강등된 경계는 효력이 없어 "지금 내 범위"에서 뺀다.
+3. edit 추가 — 제안: v0는 **remove + add**로 갈음(불변 값 객체와 결이 같다).
 
 `add --direction` **필수**로 방향불명 애매함을 입구에서 차단, 출처는 언제나 `user`(참칭 불가),
 저장은 여전히 memory(모델 안 바꿈), `memory add -t boundary`도 하위호환 유지. **비강제 철학
