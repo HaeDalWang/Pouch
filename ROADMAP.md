@@ -312,6 +312,24 @@ alias canonicalize·has_usage_signal 방어) + 5(`pouch catalog migrate` CLI —
 부르는 일회성, 적용 전 자동 백업, dry-run/--yes 두 단계 동의) 완료. 실제 ~/.pouch의
 198개 강등은 사용자가 `pouch catalog migrate`로 직접 실행(에이전트가 실데이터 안 건드림).
 
+**후속(2026-07-16, 세트 내보내기 v0 완료): 지금 주머니를 세트로 굳힌다.**
+apply의 거울상 — apply가 "출처에서 가져와 표면에 올린다"면 export는 "지금 표면에
+올라온 것을 어디서 왔는지로 되적는다". 새 형식이 아니라 같은 StarterSet(선곡표)를
+실사용으로 닳은 주머니에서 파생한다. `sets/builtin/README`의 원칙("지어낸 세트는
+안 담는다, 실사용에서 굳힌 것만")이 요구한 "굳히는 문"이자 raft 공유의 출발점.
+
+- **무엇을 담나** — 표면(active surface). 표면 자체가 evolve로 닳은 결과라 "실사용에서
+  굳힘"이 이미 들어있다. 카탈로그에만 있고 안 올린 건 안 담는다(연장통 ≠ 창고).
+- **이식성** — 출처를 홈 상대(`~`)로 접는다. apply가 `item.source`에서 재import하므로,
+  같은 플러그인을 가진 다른 머신·유저에서도 동작(raft·내장 1호의 전제).
+- **못 담는 건 격리 보고(인질 금지)** — 재설치할 출처가 없는 것은 건너뛰고 이유를
+  돌려준다: owned(몸 소유, 외부 출처 없음)·연결형(mcp 등 upstream 없음)·surface=plugin
+  (플러그인이 표면 관리, apply가 관측만 하는 것과 대칭). 인라인 body 임베드는 다음.
+- **match_tokens는 담긴 도구에서 파생** — "이 도구들에 관심 있는 사람"과 매칭(자기완결,
+  프로필 메모리 안 읽음). 추천 풀과 같은 토큰 공간.
+- **왕복 보장** — export→apply가 같은 표면을 되살림을 실물 파일로 테스트. StarterSet
+  직렬화(to_dict) 신설. `pouch set export <이름>` → `~/.pouch/sets/`. 620 tests.
+
 ---
 
 ## Phase 5 — raft (개인 → 팀)

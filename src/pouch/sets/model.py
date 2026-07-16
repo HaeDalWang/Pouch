@@ -27,6 +27,12 @@ class SetItem:
     source: str
     install: tuple[str, ...] = ()
 
+    def to_dict(self) -> dict:
+        data: dict = {"source": self.source}
+        if self.install:
+            data["install"] = list(self.install)
+        return data
+
 
 @dataclass(frozen=True)
 class StarterSet:
@@ -37,6 +43,16 @@ class StarterSet:
     description: str
     match_tokens: tuple[str, ...]  # 역할·스택 관심 토큰과 교집합 매칭
     items: tuple[SetItem, ...]
+
+    def to_dict(self) -> dict:
+        """세트 JSON으로 직렬화(from_dict의 대칭). 세트 내보내기가 쓴다."""
+        return {
+            "name": self.name,
+            "title": self.title,
+            "description": self.description,
+            "match": list(self.match_tokens),
+            "items": [item.to_dict() for item in self.items],
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> StarterSet:

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import typer
@@ -58,6 +59,63 @@ def apply(
         console.print(f"[red]✗[/red] '{name}' 세트가 없습니다. [cyan]pouch set list[/cyan]로 확인하세요.")
         raise typer.Exit(code=1)
     run_set_apply(starter, yes=yes)
+
+
+@app.command("export")
+def export(
+    name: str = typer.Argument(..., help="세트 이름(파일명 = <이름>.json)."),
+    title: str = typer.Option("", "--title", help="세트 제목(비면 이름)."),
+    description: str = typer.Option("", "--desc", "-d", help="세트 설명."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="덮어쓰기 확인 생략."),
+) -> None:
+    """지금 주머니(표면)를 세트 파일로 굳힌다 → ~/.pouch/sets/<이름>.json.
+
+    표면에 올린 것 중 재설치 가능한 것만 담는다(owned·연결형·플러그인 관리 표면은
+    출처가 없어 건너뛰고 이유를 보고). 굳힌 세트는 곧장 `pouch set list/apply`로
+    잡히고, 실사용으로 검증된 것만 나중에 sets/builtin/으로 옮겨 내장 1호가 된다.
+    """
+    from pathlib import Path
+
+    from pouch.evolution.state import active_entries
+    from pouch.sets.export import build_export_set
+
+    store = CatalogStore()
+    result = build_export_set(
+        name,
+        list(store.list()),
+        set(active_entries()),
+        home=Path.home(),
+        title=title or None,
+        description=description,
+    )
+
+    if not result.starter.items:
+        console.print("🎒 표면에서 세트로 굳힐 게 없습니다(재설치 가능한 도구가 없음).")
+        for reason in result.skipped:
+            console.print(f"  [yellow]![/yellow] {reason}")
+        raise typer.Exit(code=1)
+
+    dest = paths.sets_dir() / f"{name}.json"
+    if dest.exists() and not yes and not typer.confirm(f"{dest}를 덮어쓸까요?", default=False):
+        console.print("내보내지 않았습니다.")
+        return
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(
+        json.dumps(result.starter.to_dict(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    console.print(
+        f"[green]✓[/green] {len(result.starter.items)}개를 [cyan]{name}[/cyan] 세트로 굳혔습니다 → {dest}"
+    )
+    for item in result.starter.items:
+        console.print(f"  • [cyan]{item.install[0]}[/cyan]")
+    for reason in result.skipped:
+        console.print(f"  [yellow]![/yellow] {reason}")
+    console.print(
+        f"\n   써보기: [cyan]pouch set apply {name}[/cyan]"
+        "   ·   내장 후보로 굳히려면 sets/builtin/으로 옮기기"
+    )
 
 
 def run_set_apply(starter: StarterSet, *, yes: bool) -> SetApplyReport | None:
