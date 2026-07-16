@@ -312,6 +312,23 @@ alias canonicalize·has_usage_signal 방어) + 5(`pouch catalog migrate` CLI —
 부르는 일회성, 적용 전 자동 백업, dry-run/--yes 두 단계 동의) 완료. 실제 ~/.pouch의
 198개 강등은 사용자가 `pouch catalog migrate`로 직접 실행(에이전트가 실데이터 안 건드림).
 
+**후속(2026-07-16, Phase 4.5 태그 승격 v0 완료): 학습된 관심사 — 실사용이 진짜 프로필을 배운다.**
+핵심 도구 인식(레인 1 첫걸음)이 "무엇을 손에 쥐었나"를 배웠다면, 여기선 그 도구들이
+달고 온 토큰을 모아 "무엇에 관심 있나"를 배운다. 추천의 관심사가 init 답변(stated)
+만이 아니라 실사용(learned)에서 자란다.
+
+- **실측 재프레이밍** — 로드맵은 "태그 승격"이라 불렀지만 실측 태그는 죽어있다
+  (0/201, pool.py). 그래서 승격 신호를 태그에서 **pool 토큰**(설명 중심, 살아있는
+  신호)으로 옮긴다 — pool/similar이 이미 한 태그→설명토큰 피벗과 같은 정신. 지어내지
+  않고 있는 신호만 접는다.
+- **승격 단위 = core** — 단순 빈도가 아니라 지속·빈도로 손에 맞은 도구(core_entry_ids)
+  만. burst≠핵심·최근성 면역을 그대로 상속("손에 맞음"의 단일 정의 재사용).
+- **파생이지 저장 아님** — usage.jsonl 위에서 매번 다시 난다(프로필 기억 mutate 없음
+  → retrofit 빚 없음). 콜드 스타트(core 없음)면 빈 결과 → stated로 자연 폴백.
+- **소비처 v0** — ① 인식 표면(status "배운 관심사" 한 줄 + report 섹션, recognition)
+  ② 추천 확장(init set-matching 토큰 = stated ∪ learned). 두 기존 순수함수
+  (core_entry_ids + pool 토큰)를 잇는 얇은 슬라이스. 625 tests.
+
 ---
 
 ## Phase 5 — raft (개인 → 팀)

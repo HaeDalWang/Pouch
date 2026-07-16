@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -23,6 +24,10 @@ from pouch.hosts.registry import (
 from pouch.init.detect import Environment, detect_environment
 from pouch.init.profile import InitAnswers, build_memories, reflect
 from pouch.memory.store import MemoryStore
+
+if TYPE_CHECKING:
+    from pouch.catalog.model import ToolEntry
+    from pouch.evolution.usage_log import UsageEvent
 
 console = Console()
 
@@ -191,15 +196,35 @@ def _maybe_offer_adopt(*, yes: bool) -> None:
     )
 
 
+def _offer_tokens(
+    answers: InitAnswers, events: list[UsageEvent], entries: list[ToolEntry]
+) -> set[str]:
+    """세트 매칭에 쓸 관심 토큰 — 답변(stated) ∪ 실사용으로 배운 것(learned)(순수).
+
+    콜드 스타트(사용 이력 없음)면 learned=∅ → 답변만으로 매칭(자연 폴백). 재실행
+    사용자는 손에 맞은 도구가 배운 관심사까지 얹혀 더 잘 맞는 세트를 만난다
+    (개인화 학습 레인 1, Phase 4.5).
+    """
+    from pouch.catalog.model import alias_map
+    from pouch.catalog.recommend import interest_tokens
+    from pouch.evolution.learned_profile import learned_interest_tokens
+
+    learned = learned_interest_tokens(events, entries, alias_map=alias_map(entries))
+    return interest_tokens(answers) | learned
+
+
 def _maybe_offer_set(answers: InitAnswers, *, yes: bool) -> None:
     """역할·스택에 맞는 시작 세트가 있으면 통째로 제안한다(콜드 스타트 온보딩).
 
     맞는 세트가 없으면 조용히 지나간다 — 세트는 문이지 관문이 아니다.
     """
-    from pouch.catalog.recommend import interest_tokens
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.usage_log import read_events
     from pouch.sets.commands import offer_matching_set
 
-    offer_matching_set(tokens=interest_tokens(answers), yes=yes)
+    entries = list(CatalogStore().list())
+    tokens = _offer_tokens(answers, read_events(), entries)
+    offer_matching_set(tokens=tokens, yes=yes)
 
 
 def _print_detected(env: Environment) -> None:
