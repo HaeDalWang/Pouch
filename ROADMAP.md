@@ -317,6 +317,8 @@ alias canonicalize·has_usage_signal 방어) + 5(`pouch catalog migrate` CLI —
 ## Phase 5 — raft (개인 → 팀)
 
 > 목표: 한 사람의 좋은 돌이 무리로 번진다.
+> **설계 락(2026-07-16): [docs/RAFT-DESIGN.md](docs/RAFT-DESIGN.md)** — 공유 매체=Git 기반
+> 공유 레지스트리, 공유 단위=세트만(기억·경계·사용기록은 로컬 전용). v0 슬라이스: `set pull`.
 
 - [ ] pouch 구성 export / import
 - [ ] 팀 공유 레지스트리
