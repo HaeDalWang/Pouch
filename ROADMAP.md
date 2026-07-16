@@ -324,6 +324,20 @@ alias canonicalize·has_usage_signal 방어) + 5(`pouch catalog migrate` CLI —
 - [ ] 세트 공유 순환 — 완성된 세트 공유 → 스타(인정) → 인정받은 세트의 기본 온보딩 편입
   (2026-07-07 예약, BACKLOG 필수 4 "시작 세트"의 공유편. 세트 자체는 필수 4에서 먼저)
 
+**후속(2026-07-16, raft v0 받는 쪽 완료): `pouch set pull` — 남의 세트를 당겨온다.**
+설계 락(docs/RAFT-DESIGN.md)의 첫 슬라이스. 팀 공유 git 레지스트리 repo를
+`~/.pouch/registry/`에 clone하고, 재-pull은 `git pull`로 멱등 갱신한다.
+
+- **git shell-out** — clone/pull을 subprocess로(status의 git 호출과 같은 패턴).
+  기존 git 인증 재사용, 새 의존성 0, 버전·이력이 매체에 딸려온다.
+- **작성자 스코프** — 당겨온 세트는 `registry/sets/<author>/<name>.json`에 살고
+  정체가 `<author>/<name>`. 남끼리·나와 이름이 안 부딪는다.
+- **별도 티어 + 로컬 우선** — 내가 만든 `sets/`와 안 섞이고, 이름 충돌 시 로컬이
+  이긴다. 다른 레지스트리로 바꾸려 하면 조용히 안 덮고 거부(안내).
+- **들이기만** — pull은 세트를 목록에 올릴 뿐. 실제 적용(표면)은 `set apply`가
+  동의받아 한다(import 관문과 같은 정신). 실제 git repo 왕복 검증, 619 tests.
+- **다음** — 주는 쪽(publish 헬퍼)·인정 순환(스타→온보딩)은 레지스트리가 쌓인 뒤.
+
 **산출물:** 🦦 a raft of otters.
 
 ---

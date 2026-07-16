@@ -47,6 +47,42 @@ def list_sets() -> None:
     console.print("\n   적용: [cyan]pouch set apply <이름>[/cyan]")
 
 
+@app.command("pull")
+def pull(
+    url: str = typer.Argument(
+        None, help="레지스트리 git URL(처음 한 번). 이후엔 생략하면 최신으로 갱신."
+    ),
+) -> None:
+    """팀 공유 레지스트리에서 세트를 당겨온다 → ~/.pouch/registry/ (raft의 받는 쪽).
+
+    당겨온 세트는 `<작성자>/<이름>`으로 목록·적용에 잡히고, 내가 만든 세트와 안
+    섞인다(별도 티어, 로컬 우선). 들이기만 할 뿐 아무것도 실행·설치되지 않는다 —
+    적용은 `pouch set apply <작성자>/<이름>`이 하고 동의도 거기서 받는다. 매체가
+    git이라 버전·이력이 딸려온다. 설계: docs/RAFT-DESIGN.md.
+    """
+    from pouch.sets.registry import RegistryError, pull_registry
+
+    try:
+        origin = pull_registry(paths.registry_dir(), url=url)
+    except RegistryError as exc:
+        console.print(f"[red]✗[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    pulled = [s for s in available_sets() if "/" in s.name]  # 작성자 스코프 = 당겨온 것
+    console.print(
+        f"[green]✓[/green] 레지스트리에서 세트 {len(pulled)}개를 받았습니다"
+        f" [dim]({origin})[/dim]"
+    )
+    for starter in pulled[:20]:
+        console.print(f"  • [cyan]{starter.name}[/cyan] — {starter.title}")
+    if len(pulled) > 20:
+        console.print(f"  [dim]…외 {len(pulled) - 20}개[/dim]")
+    console.print(
+        "\n   목록: [cyan]pouch set list[/cyan]"
+        "   ·   적용: [cyan]pouch set apply <작성자>/<이름>[/cyan]"
+    )
+
+
 @app.command("apply")
 def apply(
     name: str = typer.Argument(..., help="적용할 세트 이름."),

@@ -61,6 +61,17 @@ def sets_dir() -> Path:
     return global_root() / "sets"
 
 
+def registry_dir() -> Path:
+    """당겨온 세트가 사는 별도 티어(`~/.pouch/registry/`) — 팀 공유 레지스트리의 클론.
+
+    raft의 받는 쪽(`pouch set pull`). git 레지스트리 repo를 여기 clone하고, 세트는
+    `registry/sets/<author>/<name>.json`으로 산다. 내가 만든 `sets/`(sets_dir)와 안
+    섞인다 — 이름 충돌 시 로컬(내 것)이 이기고, 재-pull은 이 티어만 멱등 갱신한다
+    (개인 우선을 구조로 강제). 설계: docs/RAFT-DESIGN.md.
+    """
+    return global_root() / "registry"
+
+
 def usage_log_path() -> Path:
     """사용 이벤트 사이드카 로그(`~/.pouch/usage.jsonl`).
 
