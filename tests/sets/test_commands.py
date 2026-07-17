@@ -100,6 +100,35 @@ def test_contract3_applied_hook_prints_command(tmp_path: Path, _no_builtin) -> N
     assert "node check.js" in result.stdout  # 훅 명령 원문은 항상 출력
 
 
+def test_set_export_freezes_surface_to_file(tmp_path: Path, _no_builtin) -> None:
+    # 단독 SKILL.md를 담고(import) 표면에 올린(install) 뒤 세트로 굳힌다.
+    skill_md = tmp_path / "src" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text(
+        "---\nname: exporttest\ndescription: Terraform on AWS\n---\nbody", encoding="utf-8"
+    )
+    assert runner.invoke(app, ["catalog", "import", str(skill_md)]).exit_code == 0
+    assert runner.invoke(app, ["catalog", "install", "exporttest"]).exit_code == 0
+
+    result = runner.invoke(app, ["set", "export", "frozen", "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "굳혔습니다" in result.stdout
+    dest = paths.sets_dir() / "frozen.json"
+    assert dest.exists()
+    data = json.loads(dest.read_text(encoding="utf-8"))
+    assert data["items"][0]["install"] == ["exporttest"]
+    assert "aws" in data["match"]  # 담긴 도구 토큰에서 매칭 파생
+    # 곧장 set list에 잡힌다.
+    assert "frozen" in runner.invoke(app, ["set", "list"]).stdout
+
+
+def test_set_export_nothing_on_empty_surface(_no_builtin) -> None:
+    result = runner.invoke(app, ["set", "export", "empty"])
+    assert result.exit_code == 1
+    assert "굳힐 게 없습니다" in result.stdout
+
+
 def test_contract4_init_offers_matching_set(tmp_path: Path, _no_builtin) -> None:
     plugin = _fake_plugin(tmp_path / "plugin", ["aws-iam"])
     _user_set("demo", source=str(plugin), install=["aws-iam"], match=["aws", "devops"])
