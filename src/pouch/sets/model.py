@@ -73,6 +73,24 @@ def load_set_file(path: Path) -> StarterSet:
     return StarterSet.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+def is_safe_set_name(name: str) -> bool:
+    """세트 이름이 파일 이름으로 안전한가 — 세트 폴더 탈출 방지(순수).
+
+    이름은 `~/.pouch/sets/<이름>.json` 경로에 그대로 박힌다. import는 **남이 준
+    파일**의 이름을 받으므로(받는 문), `../` 같은 상위 탈출이 들어간 이름이면
+    세트 폴더 밖 아무 데나 쓸 수 있게 된다 — 그래서 경로 구분자·`..`·숨김
+    파일 꼴은 거부한다. 표현(한글 등)은 막지 않는다 — 막는 건 탈출뿐.
+    """
+    return (
+        bool(name)
+        and "/" not in name
+        and "\\" not in name
+        and ".." not in name
+        and "\x00" not in name
+        and not name.startswith(".")
+    )
+
+
 def available_sets(
     *, builtin_dir: Path | None = None, user_dir: Path | None = None
 ) -> list[StarterSet]:

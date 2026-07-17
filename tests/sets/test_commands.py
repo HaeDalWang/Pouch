@@ -142,6 +142,97 @@ def test_contract4_init_offers_matching_set(tmp_path: Path, _no_builtin) -> None
     assert (paths.claude_skills_dir() / "aws-iam" / "SKILL.md").exists()  # 적용까지
 
 
+def _set_file(path: Path, name: str, *, source: str, install: list[str], match: list[str]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "name": name, "title": f"{name} 세트", "description": "남이 굳힌 것",
+            "match": match,
+            "items": [{"source": source, "install": install}],
+        }),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_set_import_stages_file_then_lists_and_applies(tmp_path: Path, _no_builtin) -> None:
+    plugin = _fake_plugin(tmp_path / "plugin", ["aws-iam"])
+    shared = _set_file(
+        tmp_path / "shared" / "gift.json", "gift",
+        source=str(plugin), install=["aws-iam"], match=["aws"],
+    )
+
+    result = runner.invoke(app, ["set", "import", str(shared)])
+    assert result.exit_code == 0, result.stdout
+    assert "들였습니다" in result.stdout
+    assert (paths.sets_dir() / "gift.json").exists()
+
+    # 곧장 list에 잡히고 apply까지 돈다(raft 왕복의 받는 쪽).
+    assert "gift" in runner.invoke(app, ["set", "list"]).stdout
+    applied = runner.invoke(app, ["set", "apply", "gift", "--yes"])
+    assert applied.exit_code == 0, applied.stdout
+    assert (paths.claude_skills_dir() / "aws-iam" / "SKILL.md").exists()
+
+
+def test_set_import_rejects_non_set_file(tmp_path: Path, _no_builtin) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json at all", encoding="utf-8")
+
+    result = runner.invoke(app, ["set", "import", str(bad)])
+    assert result.exit_code == 1
+    # rich가 긴 경로로 줄바꿈할 수 있어 공백 정규화 후 비교.
+    assert "세트파일이아닙니다" in "".join(result.stdout.split())
+    assert not (paths.sets_dir() / "bad.json").exists()  # 아무것도 안 씀
+
+
+def test_set_import_reports_missing_sources(tmp_path: Path, _no_builtin) -> None:
+    # 출처가 이 컴퓨터에 없는 세트 — 들이되 apply 때 건너뛴다고 정직히 알린다.
+    shared = _set_file(
+        tmp_path / "shared.json", "faraway",
+        source=str(tmp_path / "no-such-plugin"), install=["ghost"], match=["x"],
+    )
+
+    result = runner.invoke(app, ["set", "import", str(shared)])
+    assert result.exit_code == 0, result.stdout
+    assert (paths.sets_dir() / "faraway.json").exists()
+    assert "이 컴퓨터에 없어" in result.stdout
+
+
+def test_safe_set_name_pure_judgement() -> None:
+    from pouch.sets.model import is_safe_set_name
+
+    assert is_safe_set_name("my-set")
+    assert is_safe_set_name("데브옵스-기본")  # 표현은 안 막는다 — 막는 건 탈출뿐
+    assert not is_safe_set_name("../../evil")
+    assert not is_safe_set_name("a/b")
+    assert not is_safe_set_name("a\\b")
+    assert not is_safe_set_name(".hidden")
+    assert not is_safe_set_name("")
+
+
+def test_set_import_rejects_path_escaping_name(tmp_path: Path, _no_builtin) -> None:
+    # 받는 문 방어: 남이 준 세트의 이름에 ../ 가 박혀 있으면 세트 폴더를 탈출해
+    # 홈 아무 데나 쓸 수 있다 — 들이기 자체를 거부하고 아무것도 안 쓴다.
+    evil = _set_file(
+        tmp_path / "gift.json", "../../evil-target",
+        source=str(tmp_path / "plugin"), install=["x"], match=[],
+    )
+
+    result = runner.invoke(app, ["set", "import", str(evil)])
+
+    assert result.exit_code == 1
+    assert "못씁니다" in "".join(result.stdout.split())
+    escaped = (paths.sets_dir() / ".." / ".." / "evil-target.json").resolve()
+    assert not escaped.exists()  # 폴더 밖엔 아무것도 안 써짐
+
+
+def test_set_export_rejects_unsafe_name(_no_builtin) -> None:
+    # export의 이름은 사용자가 직접 치지만, 같은 잣대로 입구에서 거른다.
+    result = runner.invoke(app, ["set", "export", "../evil", "--yes"])
+    assert result.exit_code == 1
+    assert "못씁니다" in "".join(result.stdout.split())
+
+
 def test_contract5_init_without_match_stays_quiet(_no_builtin) -> None:
     result = runner.invoke(
         app, ["init", "--role", "디자인", "--stack", "figma", "--yes"]

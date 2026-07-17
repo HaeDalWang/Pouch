@@ -16,7 +16,13 @@ from pouch import paths
 from pouch.catalog.model import ToolKind
 from pouch.catalog.store import CatalogStore
 from pouch.sets.apply import SetApplyReport, apply_set
-from pouch.sets.model import StarterSet, available_sets, match_sets
+from pouch.sets.model import (
+    StarterSet,
+    available_sets,
+    is_safe_set_name,
+    load_set_file,
+    match_sets,
+)
 
 app = typer.Typer(
     help="🎒 set — 미리 꾸려진 한 벌(시작 세트).",
@@ -61,6 +67,65 @@ def apply(
     run_set_apply(starter, yes=yes)
 
 
+@app.command("import")
+def import_set(
+    path: str = typer.Argument(..., help="가져올 세트 JSON 경로."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="같은 이름 덮어쓰기 확인 생략."),
+) -> None:
+    """남이 굳힌 세트 파일을 내 주머니로 들인다 → ~/.pouch/sets/<이름>.json.
+
+    세트는 매니페스트(선곡표)라 코드가 아니다 — 들이기만으로는 아무것도 실행·설치되지
+    않는다. 실제 적용은 `pouch set apply <이름>`이 하고 동의는 거기서 받는다(raft의
+    첫 문: 남이 굳힌 것을 받는 쪽). 파일이 세트 형식인지 검증하고, 이름으로 정규화해
+    저장한다 — 그래야 곧장 `set list`/`apply`에 잡힌다.
+    """
+    from pathlib import Path
+
+    src = Path(path).expanduser()
+    if not src.is_file():
+        console.print(f"[red]✗[/red] 파일이 없습니다: {src}")
+        raise typer.Exit(code=1)
+    try:
+        starter = load_set_file(src)
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        console.print(f"[red]✗[/red] 세트 파일이 아닙니다({src}): {exc}")
+        raise typer.Exit(code=1) from exc
+
+    # 받는 문 방어: 남이 준 파일의 이름이 경로에 그대로 박히므로, 폴더 탈출 꼴은 거부.
+    if not is_safe_set_name(starter.name):
+        console.print(
+            f"[red]✗[/red] 세트 이름을 파일 이름으로 못 씁니다({starter.name!r}) — "
+            "경로 구분자나 '..'가 든 이름은 거부합니다(세트 폴더 탈출 방지)."
+        )
+        raise typer.Exit(code=1)
+
+    dest = paths.sets_dir() / f"{starter.name}.json"
+    if dest.exists() and not yes and not typer.confirm(
+        f"같은 이름 세트가 있습니다 — {dest}를 덮어쓸까요?", default=False
+    ):
+        console.print("들이지 않았습니다.")
+        return
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    install_total = sum(len(item.install) for item in starter.items)
+    console.print(
+        f"[green]✓[/green] [cyan]{starter.name}[/cyan] 세트를 들였습니다 — {starter.title}"
+        f" [dim](출처 {len(starter.items)}곳, 올릴 것 {install_total}개)[/dim]"
+    )
+    # 정직한 보고: 이 컴퓨터에 없는 출처는 apply 때 건너뛴다(인질 금지와 같은 정신).
+    missing = [
+        item.source for item in starter.items if not Path(item.source).expanduser().exists()
+    ]
+    if missing:
+        console.print(
+            f"  [yellow]![/yellow] 출처 {len(missing)}곳이 이 컴퓨터에 없어 apply 때 건너뜁니다:"
+        )
+        for source in missing:
+            console.print(f"     [dim]{source}[/dim]")
+    console.print(f"\n   적용: [cyan]pouch set apply {starter.name}[/cyan]")
+
 @app.command("export")
 def export(
     name: str = typer.Argument(..., help="세트 이름(파일명 = <이름>.json)."),
@@ -78,6 +143,13 @@ def export(
 
     from pouch.evolution.state import active_entries
     from pouch.sets.export import build_export_set
+
+    if not is_safe_set_name(name):
+        console.print(
+            f"[red]✗[/red] 세트 이름을 파일 이름으로 못 씁니다({name!r}) — "
+            "경로 구분자나 '..'가 든 이름은 거부합니다(세트 폴더 탈출 방지)."
+        )
+        raise typer.Exit(code=1)
 
     store = CatalogStore()
     result = build_export_set(
