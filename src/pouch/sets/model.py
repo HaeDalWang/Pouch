@@ -27,6 +27,12 @@ class SetItem:
     source: str
     install: tuple[str, ...] = ()
 
+    def to_dict(self) -> dict:
+        data: dict = {"source": self.source}
+        if self.install:
+            data["install"] = list(self.install)
+        return data
+
 
 @dataclass(frozen=True)
 class StarterSet:
@@ -37,6 +43,16 @@ class StarterSet:
     description: str
     match_tokens: tuple[str, ...]  # 역할·스택 관심 토큰과 교집합 매칭
     items: tuple[SetItem, ...]
+
+    def to_dict(self) -> dict:
+        """세트 JSON으로 직렬화(from_dict의 대칭). 세트 내보내기가 쓴다."""
+        return {
+            "name": self.name,
+            "title": self.title,
+            "description": self.description,
+            "match": list(self.match_tokens),
+            "items": [item.to_dict() for item in self.items],
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> StarterSet:
@@ -55,6 +71,24 @@ class StarterSet:
 def load_set_file(path: Path) -> StarterSet:
     """세트 JSON 파일 하나를 읽는다. 깨졌으면 예외(호출부가 격리 처리)."""
     return StarterSet.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def is_safe_set_name(name: str) -> bool:
+    """세트 이름이 파일 이름으로 안전한가 — 세트 폴더 탈출 방지(순수).
+
+    이름은 `~/.pouch/sets/<이름>.json` 경로에 그대로 박힌다. import는 **남이 준
+    파일**의 이름을 받으므로(받는 문), `../` 같은 상위 탈출이 들어간 이름이면
+    세트 폴더 밖 아무 데나 쓸 수 있게 된다 — 그래서 경로 구분자·`..`·숨김
+    파일 꼴은 거부한다. 표현(한글 등)은 막지 않는다 — 막는 건 탈출뿐.
+    """
+    return (
+        bool(name)
+        and "/" not in name
+        and "\\" not in name
+        and ".." not in name
+        and "\x00" not in name
+        and not name.startswith(".")
+    )
 
 
 def available_sets(

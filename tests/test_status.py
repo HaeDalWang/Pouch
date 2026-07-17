@@ -74,6 +74,24 @@ def test_core_count_recognizes_sustained_use() -> None:
     assert "핵심 도구 1개" in "\n".join(render_lines(status))
 
 
+def test_learned_interests_from_core_tool_show_on_screen() -> None:
+    entry = ToolEntry.owned(
+        id="aws-deploy", kind=ToolKind.SKILL, source="t", title="aws-deploy",
+        description="Deploy to AWS cloud", body="b",
+    )
+    # 12회·span 30일 → 핵심 → 설명 토큰이 관심사로 승격.
+    events = [_event("aws-deploy", "2026-06-01T00:00:00"), _event("aws-deploy", "2026-07-01T00:00:00")]
+    events += [_event("aws-deploy", "2026-06-01T00:00:00") for _ in range(10)]
+
+    status = build_status(
+        memory_count=0, entries=[entry], active_ids={"aws-deploy"},
+        events=events, now=_NOW,
+    )
+
+    assert "aws" in status.learned_interests
+    assert "배운 관심사" in "\n".join(render_lines(status))
+
+
 def test_contract2_recent_window_excludes_old_events() -> None:
     events = [
         _event("fresh", "2026-07-01T09:00:00"),
