@@ -70,19 +70,39 @@ def render_how_to_remember() -> list[str]:
     한다(대체 설계 §3의 단기 해법). boundary·checkpoint 규약과 같은 고정 구역·영어
     지침이다 — 도구(GPT·Gemini 등)를 가리지 않고 준수가 더 안정적이라. 채우는 값은
     사용자 언어(한글)로 쓰라고 명시한다(라벨은 기계를 위해, 값은 사람을 위해).
+
+    **저마찰 유입 배선(Phase 4.6 ④의 에이전트 쪽).** pending 스테이징 계층·정책은
+    2026-07-05에 락·구현됐지만 이 지침이 그걸 안 가르쳐, 세션에서 배운 게 기억으로
+    흘러드는 경로가 반쪽이었다. 정책을 지침에 잇는다: project·reference는 `--pending`으로
+    마찰 없이 스테이징(주입 인덱스를 안 더럽히고 리뷰 때 일괄 확정), user·feedback·
+    boundary는 사용자가 말했거나 확인한 자리에서만 — 오독한 일회성이 매 세션 주입되는
+    standing rule로 굳는 위험(boundary deny 오독과 동형)을 막는다. 새 신호원이 아니라
+    (에이전트가 곧 신호) 있는 계층을 지침으로 연결한 것 — "반복 질문 자동 감지"는 별도.
     """
     return [
         "## How to remember (persist across sessions)",
         "",
         "pouch is this agent's memory layer. When you learn something worth "
-        "carrying into future sessions — a stable fact about the user, a reusable "
-        "fix, an autonomy boundary — record it yourself, without being asked:",
+        "carrying into future sessions, record it yourself — but route by type so a "
+        "misread one-off never hardens into a standing rule:",
+        "",
+        "- **Low-friction (project, reference):** stage it as you go, no need to ask. "
+        "It waits in review — not the injected index — so it can't shape future "
+        "sessions until confirmed:",
         "```",
         'pouch memory add -n <kebab-name> -d "<summary>" -b "<body>" '
-        "-t <user|feedback|project|reference|boundary> -s <global|project>",
+        "-t <project|reference> -s <global|project> --pending",
+        "```",
+        "- **Needs the user in the loop (user, feedback, boundary):** record these "
+        "only when the user has said or confirmed it — never infer them silently. A "
+        "misheard preference or limit would otherwise steer every future session:",
+        "```",
+        'pouch memory add -n <kebab-name> -d "<summary>" -b "<body>" '
+        "-t <user|feedback|boundary> -s <global|project>",
         "```",
         "Write the summary and body in the user's language. Pick the type honestly "
-        "(feedback = how the user wants you to work; boundary = an autonomy limit).",
+        "(feedback = how the user wants you to work; boundary = an autonomy limit). "
+        "Staged items surface for review in `pouch evolve`.",
         "",
     ]
 
