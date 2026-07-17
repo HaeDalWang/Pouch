@@ -81,6 +81,39 @@ def test_contract4_match_by_token_overlap_ranked(tmp_path: Path) -> None:
     assert [s.name for s in matched] == ["aws-devops"]
 
 
+def _write_registry_set(
+    registry: Path, author: str, name: str, *, match: list[str], title: str = ""
+) -> Path:
+    directory = registry / "sets" / author
+    return _write_set(directory, name, match=match, title=title)
+
+
+def test_registry_sets_are_author_scoped(tmp_path: Path) -> None:
+    registry = tmp_path / "registry"
+    _write_registry_set(registry, "alice", "aws-devops", match=["aws"])
+
+    sets = available_sets(
+        builtin_dir=tmp_path / "none", user_dir=tmp_path / "none2", registry_dir=registry
+    )
+
+    # 정체가 작성자 스코프로 — 남끼리·나와 안 부딪는다.
+    assert [s.name for s in sets] == ["alice/aws-devops"]
+
+
+def test_registry_and_local_coexist_without_collision(tmp_path: Path) -> None:
+    registry = tmp_path / "registry"
+    user = tmp_path / "user"
+    _write_registry_set(registry, "alice", "aws-devops", match=["aws"])
+    _write_set(user, "aws-devops", match=["aws"], title="내 것")  # 같은 base 이름, 로컬
+
+    sets = available_sets(builtin_dir=tmp_path / "none", user_dir=user, registry_dir=registry)
+
+    # 로컬 aws-devops와 당겨온 alice/aws-devops가 별개로 공존(스코프 덕).
+    assert {s.name for s in sets} == {"aws-devops", "alice/aws-devops"}
+    mine = next(s for s in sets if s.name == "aws-devops")
+    assert mine.title == "내 것"
+
+
 def test_contract5_broken_set_file_is_skipped(tmp_path: Path) -> None:
     user = tmp_path / "user"
     _write_set(user, "good", match=["aws"])

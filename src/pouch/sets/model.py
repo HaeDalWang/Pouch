@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from pouch import paths
@@ -92,16 +92,33 @@ def is_safe_set_name(name: str) -> bool:
 
 
 def available_sets(
-    *, builtin_dir: Path | None = None, user_dir: Path | None = None
+    *,
+    builtin_dir: Path | None = None,
+    user_dir: Path | None = None,
+    registry_dir: Path | None = None,
 ) -> list[StarterSet]:
-    """내장 + 사용자 세트를 모두 읽는다. 같은 이름은 사용자가 이긴다.
+    """당겨온(레지스트리) + 내장 + 사용자 세트를 모두 읽는다. 같은 이름은 사용자가 이긴다.
 
-    깨진 파일은 건너뛴다 — 한 파일이 전체 목록을 인질로 잡지 않는다.
+    우선순위(같은 이름 충돌 시): registry(남) < builtin < user(나) — 개인 우선.
+    당겨온 세트는 `registry/sets/<author>/<name>.json`에 살고, 정체를 `<author>/<name>`로
+    스코프해 남끼리·나와 이름이 안 부딪게 한다(작성자 스코프). 깨진 파일은 건너뛴다 —
+    한 파일이 전체 목록을 인질로 잡지 않는다.
     """
     builtin = builtin_dir if builtin_dir is not None else _BUILTIN_DIR
     user = user_dir if user_dir is not None else paths.sets_dir()
+    registry = registry_dir if registry_dir is not None else paths.registry_dir()
 
     by_name: dict[str, StarterSet] = {}
+    # 레지스트리(남) 먼저 = 가장 낮은 우선. 작성자 스코프 이름으로 정체를 준다.
+    reg_sets = registry / "sets"
+    if reg_sets.is_dir():
+        for path in sorted(reg_sets.glob("*/*.json")):
+            try:
+                loaded = load_set_file(path)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+            scoped = replace(loaded, name=f"{path.parent.name}/{loaded.name}")
+            by_name[scoped.name] = scoped
     for directory in (builtin, user):  # 나중(사용자)이 덮는다 = 개인 우선
         if not directory.is_dir():
             continue
