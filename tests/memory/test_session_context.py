@@ -139,6 +139,22 @@ def test_how_to_remember_always_injected() -> None:
     assert "pouch memory add" in out
 
 
+def test_how_to_remember_teaches_low_friction_staging() -> None:
+    # 저마찰 유입 배선: project·reference는 --pending으로 스테이징하라고 가르친다.
+    out = render_session_context([])
+    assert "--pending" in out
+    assert "project|reference" in out  # 저마찰 타입만 pending 경로에
+
+
+def test_how_to_remember_keeps_high_friction_in_the_loop() -> None:
+    # user·feedback·boundary는 사용자 확인 자리에서만(자동 침묵 금지) — --pending 아님.
+    out = render_session_context([])
+    assert "user|feedback|boundary" in out
+    # 이 타입 지침엔 pending을 안 붙인다(정책: 확인 필수).
+    high_block = out.split("Needs the user in the loop", 1)[1]
+    assert "--pending" not in high_block
+
+
 def test_how_to_remember_in_fixed_zone_below_boundary() -> None:
     # 배치: 경계(안전 최우선)가 쓰기 지침보다 위. 지침은 고정 구역 안.
     out = render_session_context([_boundary()])

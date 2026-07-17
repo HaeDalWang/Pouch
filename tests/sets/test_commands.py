@@ -100,6 +100,35 @@ def test_contract3_applied_hook_prints_command(tmp_path: Path, _no_builtin) -> N
     assert "node check.js" in result.stdout  # 훅 명령 원문은 항상 출력
 
 
+def test_set_export_freezes_surface_to_file(tmp_path: Path, _no_builtin) -> None:
+    # 단독 SKILL.md를 담고(import) 표면에 올린(install) 뒤 세트로 굳힌다.
+    skill_md = tmp_path / "src" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text(
+        "---\nname: exporttest\ndescription: Terraform on AWS\n---\nbody", encoding="utf-8"
+    )
+    assert runner.invoke(app, ["catalog", "import", str(skill_md)]).exit_code == 0
+    assert runner.invoke(app, ["catalog", "install", "exporttest"]).exit_code == 0
+
+    result = runner.invoke(app, ["set", "export", "frozen", "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "굳혔습니다" in result.stdout
+    dest = paths.sets_dir() / "frozen.json"
+    assert dest.exists()
+    data = json.loads(dest.read_text(encoding="utf-8"))
+    assert data["items"][0]["install"] == ["exporttest"]
+    assert "aws" in data["match"]  # 담긴 도구 토큰에서 매칭 파생
+    # 곧장 set list에 잡힌다.
+    assert "frozen" in runner.invoke(app, ["set", "list"]).stdout
+
+
+def test_set_export_nothing_on_empty_surface(_no_builtin) -> None:
+    result = runner.invoke(app, ["set", "export", "empty"])
+    assert result.exit_code == 1
+    assert "굳힐 게 없습니다" in result.stdout
+
+
 def test_contract4_init_offers_matching_set(tmp_path: Path, _no_builtin) -> None:
     plugin = _fake_plugin(tmp_path / "plugin", ["aws-iam"])
     _user_set("demo", source=str(plugin), install=["aws-iam"], match=["aws", "devops"])
@@ -167,6 +196,41 @@ def test_set_import_reports_missing_sources(tmp_path: Path, _no_builtin) -> None
     assert result.exit_code == 0, result.stdout
     assert (paths.sets_dir() / "faraway.json").exists()
     assert "이 컴퓨터에 없어" in result.stdout
+
+
+def test_safe_set_name_pure_judgement() -> None:
+    from pouch.sets.model import is_safe_set_name
+
+    assert is_safe_set_name("my-set")
+    assert is_safe_set_name("데브옵스-기본")  # 표현은 안 막는다 — 막는 건 탈출뿐
+    assert not is_safe_set_name("../../evil")
+    assert not is_safe_set_name("a/b")
+    assert not is_safe_set_name("a\\b")
+    assert not is_safe_set_name(".hidden")
+    assert not is_safe_set_name("")
+
+
+def test_set_import_rejects_path_escaping_name(tmp_path: Path, _no_builtin) -> None:
+    # 받는 문 방어: 남이 준 세트의 이름에 ../ 가 박혀 있으면 세트 폴더를 탈출해
+    # 홈 아무 데나 쓸 수 있다 — 들이기 자체를 거부하고 아무것도 안 쓴다.
+    evil = _set_file(
+        tmp_path / "gift.json", "../../evil-target",
+        source=str(tmp_path / "plugin"), install=["x"], match=[],
+    )
+
+    result = runner.invoke(app, ["set", "import", str(evil)])
+
+    assert result.exit_code == 1
+    assert "못씁니다" in "".join(result.stdout.split())
+    escaped = (paths.sets_dir() / ".." / ".." / "evil-target.json").resolve()
+    assert not escaped.exists()  # 폴더 밖엔 아무것도 안 써짐
+
+
+def test_set_export_rejects_unsafe_name(_no_builtin) -> None:
+    # export의 이름은 사용자가 직접 치지만, 같은 잣대로 입구에서 거른다.
+    result = runner.invoke(app, ["set", "export", "../evil", "--yes"])
+    assert result.exit_code == 1
+    assert "못씁니다" in "".join(result.stdout.split())
 
 
 def test_contract5_init_without_match_stays_quiet(_no_builtin) -> None:
