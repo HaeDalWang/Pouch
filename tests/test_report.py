@@ -41,6 +41,48 @@ def test_most_used_ranks_catalog_tools_by_count() -> None:
     assert report.most_used == (("alpha", 2), ("beta", 1))
 
 
+def _skill_desc(entry_id: str, description: str) -> ToolEntry:
+    return ToolEntry.owned(
+        id=entry_id, kind=ToolKind.SKILL, source="t", title=entry_id,
+        description=description, body="b",
+    )
+
+
+def _sustained(entry_id: str, count: int = 12) -> list[UsageEvent]:
+    """core를 만드는 사용 — 12회, span ~30일(min_count·min_span 넘김)."""
+    first, last = "2026-06-01T00:00:00", "2026-07-01T00:00:00"
+    evs = [_ev(entry_id, first), _ev(entry_id, last)]
+    evs += [_ev(entry_id, first) for _ in range(count - 2)]
+    return evs
+
+
+def test_learned_interests_promote_core_tool_tokens() -> None:
+    # 핵심 도구가 된 것의 설명 토큰이 관심사로 승격, 공유 토큰이 위로.
+    entries = [
+        _skill_desc("aws-deploy", "Deploy to AWS cloud"),
+        _skill_desc("aws-cost", "AWS billing analysis"),
+    ]
+    events = _sustained("aws-deploy") + _sustained("aws-cost")
+    report = build_report(
+        entries=entries, active_ids=set(), events=events, now=NOW, window_days=7
+    )
+    assert report.learned_interests[0] == "aws"  # 두 핵심 도구 공유 → 최상위
+    assert "deploy" in report.learned_interests
+    rendered = "\n".join(render_report_lines(report))
+    assert "실사용으로 배운 관심사" in rendered
+    assert "aws" in rendered
+
+
+def test_learned_interests_empty_without_core() -> None:
+    # 몇 번 안 쓴(비-core) 도구는 관심사를 못 만든다.
+    entries = [_skill_desc("aws-deploy", "Deploy to AWS cloud")]
+    events = [_ev("aws-deploy", "2026-07-14T10:00:00")]
+    report = build_report(
+        entries=entries, active_ids=set(), events=events, now=NOW, window_days=7
+    )
+    assert report.learned_interests == ()
+
+
 def test_idle_active_lists_unused_signal_tools_only() -> None:
     # alpha는 씀, beta는 안 씀(신호형→닳는 중), h는 훅(신호 없음→제외).
     entries = [_skill("alpha"), _skill("beta"), _hook("h")]

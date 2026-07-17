@@ -14,6 +14,39 @@ from pouch.memory.store import MemoryStore
 runner = CliRunner()
 
 
+def test_offer_tokens_union_stated_and_learned() -> None:
+    """세트 매칭 토큰 = 답변(stated) ∪ 실사용으로 배운 것(learned)."""
+    from pouch.catalog.model import ToolEntry, ToolKind
+    from pouch.evolution.usage_log import UsageEvent
+    from pouch.init.commands import _offer_tokens
+    from pouch.init.profile import InitAnswers
+
+    answers = InitAnswers(role="backend developer", stacks=("python",), style=None, boundary=None)
+    entry = ToolEntry.owned(
+        id="tf-plan", kind=ToolKind.SKILL, source="t", title="tf-plan",
+        description="Terraform infrastructure planning", body="b",
+    )
+    # tf-plan을 핵심으로 만드는 사용(12회·span 30일).
+    first, last = "2026-06-01T00:00:00", "2026-07-01T00:00:00"
+    events = [UsageEvent(entry_id="tf-plan", ts=first), UsageEvent(entry_id="tf-plan", ts=last)]
+    events += [UsageEvent(entry_id="tf-plan", ts=first) for _ in range(10)]
+
+    tokens = _offer_tokens(answers, events, [entry])
+    assert "python" in tokens  # stated(답변)
+    assert "terraform" in tokens  # learned(핵심 도구가 달고 온 것)
+
+
+def test_offer_tokens_cold_start_is_stated_only() -> None:
+    """사용 이력이 없으면 learned=∅ → 답변만으로 매칭(자연 폴백)."""
+    from pouch.init.commands import _offer_tokens
+    from pouch.init.profile import InitAnswers
+
+    answers = InitAnswers(role="backend developer", stacks=("python",), style=None, boundary=None)
+    tokens = _offer_tokens(answers, [], [])
+    assert "python" in tokens
+    assert "terraform" not in tokens
+
+
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("POUCH_HOME", str(tmp_path / "global"))
