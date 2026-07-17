@@ -16,9 +16,11 @@ from pouch.catalog.model import ToolEntry, alias_map
 from pouch.evolution.aggregate import aggregate_usage, canonicalize_stats, events_within
 from pouch.evolution.candidates import has_usage_signal
 from pouch.evolution.core_tools import core_entry_ids
+from pouch.evolution.learned_profile import learned_interests
 from pouch.evolution.usage_log import UsageEvent
 
 _TOP_N = 5
+_LEARNED_CAP = 12  # 인식 표면이라 상위 몇 개만 — 전량은 노이즈
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,7 @@ class ToolkitReport:
     total_uses: int  # 창 안 총 사용 횟수
     active_count: int  # 표면(연장통)에 올라온 카탈로그 도구 수
     core: tuple[str, ...]  # 지속·빈도로 손에 맞은 핵심 도구(전체 이력 기준, 창 무관)
+    learned_interests: tuple[str, ...]  # 핵심 도구가 달고 온 토큰 = 실사용으로 배운 관심사(추천 참고)
     most_used: tuple[tuple[str, int], ...]  # (id, count) — 카탈로그 도구 상위
     idle_active: tuple[str, ...]  # 표면에 있는데 창 안에 안 쓰인 신호형 도구(닳는 중)
     outside_pouch: tuple[tuple[str, int], ...]  # 카탈로그 밖인데 쓴 것 (id, count)
@@ -62,6 +65,10 @@ def build_report(
     used_ids = set(stats)
     # 핵심은 전체 이력(창 무관)의 지속·빈도로 — 이번 창이 조용해도 손에 맞은 도구는 핵심.
     core = tuple(sorted(core_entry_ids(events, alias_map=aliases) & catalog_ids))
+    # 학습된 관심사: 핵심 도구가 달고 온 토큰(수렴 순). 실사용이 진짜 프로필을 배운다.
+    learned = tuple(
+        token for token, _ in learned_interests(events, entries, alias_map=aliases)
+    )[:_LEARNED_CAP]
 
     ranked = sorted(stats.items(), key=lambda item: (-item[1].count, item[0]))
     most_used = tuple(
@@ -97,6 +104,7 @@ def build_report(
         total_uses=len(recent),
         active_count=len(active_ids & catalog_ids),
         core=core,
+        learned_interests=learned,
         most_used=most_used,
         idle_active=idle_active,
         outside_pouch=outside_pouch,
@@ -143,6 +151,14 @@ def render_report_lines(report: ToolkitReport) -> list[str]:
         lines.append(f"  🪨 [bold]핵심 도구[/bold] {len(report.core)}개 — 손에 맞은(정리에서 보호)")
         for entry_id in report.core:
             lines.append(f"     • [cyan]{entry_id}[/cyan]")
+        lines.append("")
+
+    # 학습된 관심사 — 핵심 도구가 달고 온 토큰. init 답변만이 아니라 실사용이 프로필을
+    # 배운다(recognition). 추천(set 매칭)이 이걸 참고한다.
+    if report.learned_interests:
+        joined = ", ".join(report.learned_interests)
+        lines.append(f"  🧭 [bold]실사용으로 배운 관심사[/bold] — {joined}")
+        lines.append("     [dim]손에 맞은 도구가 달고 온 것 · 추천이 이걸 참고합니다[/dim]")
         lines.append("")
 
     if report.total_uses == 0:

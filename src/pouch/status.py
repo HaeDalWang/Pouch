@@ -12,11 +12,13 @@ from dataclasses import dataclass
 from pouch.catalog.model import Ownership, ToolEntry, alias_map
 from pouch.evolution.aggregate import aggregate_usage, canonicalize_stats, events_within
 from pouch.evolution.core_tools import core_entry_ids
+from pouch.evolution.learned_profile import learned_interests
 from pouch.evolution.usage_log import UsageEvent
 
 _RECENT_WINDOW_DAYS = 7
 _TOP_N = 3
 _MEM_PREVIEW_N = 3
+_LEARNED_TOP_N = 6  # 민낯 화면은 좁으니 상위 몇 개만
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class PouchStatus:
     staged_count: int  # 소스에 재워뒀지만 아직 카탈로그로 진입 안 한 것(가리키기만 한 것)
     active_count: int
     core_count: int  # 지속·빈도로 손에 맞은 핵심 도구 수(전체 이력 기준)
+    learned_interests: tuple[str, ...]  # 핵심 도구가 달고 온 토큰 = 실사용으로 배운 관심사
     recent_total: int  # 최근 창 안의 총 사용 횟수
     recent_top: tuple[tuple[str, int], ...]  # (entry_id, count) 상위
     outside_pouch: tuple[str, ...]  # 최근 쓰였는데 카탈로그 밖 (attach 신호)
@@ -79,6 +82,10 @@ def build_status(
     catalog_ids = {entry.id for entry in entries}
     # 핵심 도구는 전체 이력 기준(최근 창 아님) — 조용한 주에도 손에 맞은 건 핵심.
     core = core_entry_ids(events, alias_map=aliases) & catalog_ids
+    # 학습된 관심사: 핵심 도구가 달고 온 토큰(수렴 순) — 실사용이 배운 프로필.
+    learned = tuple(
+        token for token, _ in learned_interests(events, entries, alias_map=aliases)
+    )[:_LEARNED_TOP_N]
 
     return PouchStatus(
         version=version,
@@ -92,6 +99,7 @@ def build_status(
         staged_count=staged_count,
         active_count=len(active_ids & catalog_ids),
         core_count=len(core),
+        learned_interests=learned,
         recent_total=len(recent),
         recent_top=tuple((eid, stat.count) for eid, stat in ranked[:_TOP_N]),
         outside_pouch=tuple(sorted(eid for eid in stats if eid not in catalog_ids)),
@@ -244,6 +252,9 @@ def _render_pouch(status: PouchStatus) -> list[str]:
         lines.append(
             f"  {_INDENT}[dim]핵심 도구 {status.core_count}개 — 손에 맞아 정리에서 보호[/dim]"
         )
+    if status.learned_interests:
+        joined = ", ".join(status.learned_interests)
+        lines.append(f"  {_INDENT}[dim]배운 관심사: {joined}[/dim]")
     lines.append(f"{_label('기억')}{status.memory_count}개")
     for preview in status.memory_preview:
         lines.append(f"  {_INDENT}[dim]•[/dim] {preview}")
