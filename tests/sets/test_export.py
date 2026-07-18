@@ -30,10 +30,8 @@ def test_homeifies_upstream_for_portability() -> None:
     assert result.starter.items[0].install == ("s",)
 
 
-def test_skips_owned_mcp_and_plugin_surface_with_reasons() -> None:
-    owned = ToolEntry.owned(
-        id="mine", kind=ToolKind.SKILL, source="t", title="mine", description="d", body="b",
-    )
+def test_skips_mcp_and_plugin_surface_with_reasons() -> None:
+    # owned는 더는 건너뛰지 않는다 — 임베드로 실린다(test_embed.py 참조).
     mcp = ToolEntry.linked(
         id="exa", kind=ToolKind.MCP, source="t", title="exa", description="d",
         recipe={"command": "x"},  # upstream 없음
@@ -43,11 +41,10 @@ def test_skips_owned_mcp_and_plugin_surface_with_reasons() -> None:
         recipe={}, surface=SURFACE_PLUGIN,
     )
     result = build_export_set(
-        "set", [owned, mcp, plugin], {"mine", "exa", "ecc-skill"}, home=Path("/h"),
+        "set", [mcp, plugin], {"exa", "ecc-skill"}, home=Path("/h"),
     )
     assert result.starter.items == ()  # 담을 게 없다
     reasons = "\n".join(result.skipped)
-    assert "mine" in reasons and "몸을 직접 소유" in reasons
     assert "exa" in reasons and "연결형" in reasons
     assert "ecc-skill" in reasons and "플러그인" in reasons
 

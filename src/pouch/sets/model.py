@@ -21,13 +21,57 @@ _BUILTIN_DIR = Path(__file__).parent / "builtin"
 
 
 @dataclass(frozen=True)
-class SetItem:
-    """세트의 한 항목: 가져올 곳 + 그중 표면에 올릴 것들(비면 담기만)."""
+class EmbeddedTool:
+    """세트에 통째로 실린 직접 만든 도구(owned) — 출처 대신 본문을 품는다.
 
-    source: str
-    install: tuple[str, ...] = ()
+    인라인 방식 락(배승도, 2026-07-18): "남의 도구는 주소, 내 도구는 실물"이
+    세트 JSON 한 파일에 같이 들어간다. v0는 스킬(글 한 장짜리)만.
+    """
+
+    id: str
+    body: str
+    kind: str = "skill"
+    title: str = ""
+    description: str = ""
+    tags: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
+        data: dict = {"id": self.id, "kind": self.kind, "body": self.body}
+        if self.title:
+            data["title"] = self.title
+        if self.description:
+            data["description"] = self.description
+        if self.tags:
+            data["tags"] = list(self.tags)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> EmbeddedTool:
+        return cls(
+            id=data["id"],
+            body=data["body"],  # 본문 없는 embed는 형식 위반 — KeyError로 격리
+            kind=data.get("kind", "skill"),
+            title=data.get("title", ""),
+            description=data.get("description", ""),
+            tags=tuple(data.get("tags", ())),
+        )
+
+
+@dataclass(frozen=True)
+class SetItem:
+    """세트의 한 항목: 참조(source→install) 또는 임베드(embed) 중 하나.
+
+    참조는 "어디서 가져올지"만 가리키고, 임베드는 본문을 통째로 품는다
+    (직접 만든 도구는 가져올 출처가 없으므로).
+    """
+
+    source: str = ""
+    install: tuple[str, ...] = ()
+    embed: EmbeddedTool | None = None
+
+    def to_dict(self) -> dict:
+        if self.embed is not None:
+            return {"embed": self.embed.to_dict()}
         data: dict = {"source": self.source}
         if self.install:
             data["install"] = list(self.install)
@@ -61,11 +105,15 @@ class StarterSet:
             title=data.get("title") or data["name"],
             description=data.get("description", ""),
             match_tokens=tuple(t.lower() for t in data.get("match", ())),
-            items=tuple(
-                SetItem(source=item["source"], install=tuple(item.get("install", ())))
-                for item in data.get("items", ())
-            ),
+            items=tuple(_item_from_dict(item) for item in data.get("items", ())),
         )
+
+
+def _item_from_dict(item: dict) -> SetItem:
+    """항목 하나를 읽는다 — embed면 본문 통째, 아니면 참조(source 필수)."""
+    if "embed" in item:
+        return SetItem(embed=EmbeddedTool.from_dict(item["embed"]))
+    return SetItem(source=item["source"], install=tuple(item.get("install", ())))
 
 
 def load_set_file(path: Path) -> StarterSet:

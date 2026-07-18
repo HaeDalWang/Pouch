@@ -12,9 +12,12 @@ apply의 거울상: apply가 "출처에서 가져와 표면에 올린다"면, ex
 같은 플러그인을 가진 다른 머신·유저에서도 동작하도록 홈 아래 경로를 `~/`로 접는다.
 이게 raft 공유와 내장 세트 1호의 전제다.
 
-**못 담는 것은 격리 보고(인질 금지).** 재설치할 출처 경로가 없는 것은 건너뛰고
-이유를 돌려준다:
-- owned(몸을 직접 소유) — 외부 출처가 없다. 인라인 body 임베드는 형식 확장이라 다음.
+**owned는 본문을 통째로 싣는다(인라인 임베드 — 배승도 락, 2026-07-18).** 직접
+만든 도구는 가져올 출처가 없으므로 출처 대신 실물(body)을 세트 파일 안에 품는다.
+"남의 도구는 주소, 내 도구는 실물"이 한 파일에 공존한다. v0는 스킬만.
+
+**못 담는 것은 격리 보고(인질 금지).** 건너뛰고 이유를 돌려준다:
+- owned인데 스킬이 아니거나 본문이 빈 것 — v0 임베드 범위 밖.
 - 연결형(mcp·훅 등 upstream 없음) — 원본 파일 경로를 엔트리가 안 들고 있다.
 - surface=plugin — 플러그인이 표면을 관리(apply도 관측만 하는 것과 대칭).
 
@@ -29,9 +32,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from pouch.catalog.model import SURFACE_PLUGIN, Ownership, ToolEntry
+from pouch.catalog.model import SURFACE_PLUGIN, Ownership, ToolEntry, ToolKind
 from pouch.evolution.pool import build_pool
-from pouch.sets.model import SetItem, StarterSet
+from pouch.sets.model import EmbeddedTool, SetItem, StarterSet
 
 _MATCH_TOKEN_CAP = 20  # 매칭 토큰은 몇 개면 충분 — 전량은 시끄럽다
 
@@ -88,7 +91,23 @@ def build_export_set(
             skipped.append(f"'{entry_id}'는 플러그인이 표면을 관리해 세트에 안 담음(관측만)")
             continue
         if entry.ownership is Ownership.OWNED:
-            skipped.append(f"'{entry_id}'는 몸을 직접 소유해 출처가 없음 — v0 세트엔 못 담음")
+            # 직접 만든 도구는 출처가 없으니 본문을 통째로 싣는다(인라인 임베드,
+            # 2026-07-18 락). v0는 스킬(글 한 장짜리)만 — 나머지는 정직하게 보고.
+            if entry.kind is not ToolKind.SKILL:
+                skipped.append(f"'{entry_id}'는 owned인데 v0 임베드는 스킬만 담음")
+                continue
+            if not (entry.body or "").strip():
+                skipped.append(f"'{entry_id}'는 owned인데 본문이 비어 있어 못 담음")
+                continue
+            items.append(SetItem(embed=EmbeddedTool(
+                id=entry.id,
+                kind=entry.kind.value,
+                title=entry.title,
+                description=entry.description,
+                tags=entry.tags,
+                body=entry.body or "",
+            )))
+            exported.append(entry)
             continue
         if not entry.upstream:
             skipped.append(f"'{entry_id}'는 재설치할 출처 경로가 없음(연결형) — v0 세트엔 못 담음")
