@@ -240,3 +240,44 @@ def test_contract5_init_without_match_stays_quiet(_no_builtin) -> None:
 
     assert result.exit_code == 0, result.stdout
     assert "세트" not in result.stdout  # 맞는 세트가 없으면 조용히 기존 흐름
+
+
+# ── owned 임베드 CLI 계약 (2026-07-18) ───────────────────────────────────
+
+
+def test_set_export_embeds_owned_and_prints_it(tmp_path: Path, _no_builtin) -> None:
+    # owned를 표면에 올린 뒤 export — 임베드 항목이 담기고, 보고 줄이 안 넘어진다
+    # (실사용에서 IndexError로 실제 잡힌 회귀: item.install[0]이 embed엔 없다).
+    skill_md = tmp_path / "mine" / "SKILL.md"
+    skill_md.parent.mkdir(parents=True)
+    skill_md.write_text(
+        "---\nname: my-know-how\ndescription: k8s tip\n---\n# 노하우", encoding="utf-8"
+    )
+    assert runner.invoke(app, ["catalog", "import", str(skill_md), "--own"]).exit_code == 0
+    assert runner.invoke(app, ["catalog", "install", "my-know-how"]).exit_code == 0
+
+    result = runner.invoke(app, ["set", "export", "knowhow", "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "my-know-how" in result.stdout
+    data = json.loads((paths.sets_dir() / "knowhow.json").read_text(encoding="utf-8"))
+    assert data["items"][0]["embed"]["id"] == "my-know-how"
+
+    # 목록도 embed를 "올릴 것"으로 센다 (0개라고 하지 않는다)
+    listed = runner.invoke(app, ["set", "list"])
+    assert listed.exit_code == 0
+    assert "올릴 것 1개" in listed.stdout
+
+
+def test_set_import_embed_set_without_bogus_missing_source(tmp_path: Path, _no_builtin) -> None:
+    # embed 항목은 출처(source)가 없다 — "출처가 이 컴퓨터에 없다" 경고 대상이 아니다.
+    gift = tmp_path / "gift.json"
+    gift.write_text(json.dumps({
+        "name": "embedded-gift", "title": "선물", "description": "", "match": [],
+        "items": [{"embed": {"id": "their-know-how", "kind": "skill", "body": "# 본문"}}],
+    }), encoding="utf-8")
+
+    result = runner.invoke(app, ["set", "import", str(gift)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "이 컴퓨터에 없어" not in result.stdout

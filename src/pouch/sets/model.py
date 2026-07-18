@@ -98,6 +98,12 @@ class StarterSet:
             "items": [item.to_dict() for item in self.items],
         }
 
+    def install_count(self) -> int:
+        """표면에 올릴 총 개수 — 참조의 install 목록 + 임베드(임베드는 곧 올릴 것)."""
+        refs = sum(len(item.install) for item in self.items)
+        embeds = sum(1 for item in self.items if item.embed is not None)
+        return refs + embeds
+
     @classmethod
     def from_dict(cls, data: dict) -> StarterSet:
         return cls(

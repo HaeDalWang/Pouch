@@ -44,10 +44,9 @@ def list_sets() -> None:
         return
     console.print(f"🎒 [bold]시작 세트[/bold] ({len(sets)}개)\n")
     for starter in sets:
-        install_count = sum(len(item.install) for item in starter.items)
         console.print(
             f"  • [cyan]{starter.name}[/cyan] — {starter.title}"
-            f" [dim](올릴 것 {install_count}개)[/dim]"
+            f" [dim](올릴 것 {starter.install_count()}개)[/dim]"
         )
         if starter.description:
             console.print(f"    {starter.description}")
@@ -145,14 +144,16 @@ def import_set(
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
 
-    install_total = sum(len(item.install) for item in starter.items)
     console.print(
         f"[green]✓[/green] [cyan]{starter.name}[/cyan] 세트를 들였습니다 — {starter.title}"
-        f" [dim](출처 {len(starter.items)}곳, 올릴 것 {install_total}개)[/dim]"
+        f" [dim](출처 {len(starter.items)}곳, 올릴 것 {starter.install_count()}개)[/dim]"
     )
     # 정직한 보고: 이 컴퓨터에 없는 출처는 apply 때 건너뛴다(인질 금지와 같은 정신).
+    # embed 항목은 본문을 품고 있어 출처가 없다 — 검사 대상이 아니다.
     missing = [
-        item.source for item in starter.items if not Path(item.source).expanduser().exists()
+        item.source
+        for item in starter.items
+        if item.embed is None and not Path(item.source).expanduser().exists()
     ]
     if missing:
         console.print(
@@ -217,7 +218,10 @@ def export(
         f"[green]✓[/green] {len(result.starter.items)}개를 [cyan]{name}[/cyan] 세트로 굳혔습니다 → {dest}"
     )
     for item in result.starter.items:
-        console.print(f"  • [cyan]{item.install[0]}[/cyan]")
+        if item.embed is not None:
+            console.print(f"  • [cyan]{item.embed.id}[/cyan] [dim](본문 실림)[/dim]")
+        else:
+            console.print(f"  • [cyan]{item.install[0]}[/cyan]")
     for reason in result.skipped:
         console.print(f"  [yellow]![/yellow] {reason}")
     console.print(
@@ -228,13 +232,15 @@ def export(
 
 def run_set_apply(starter: StarterSet, *, yes: bool) -> SetApplyReport | None:
     """세트 제안 → 동의 → 적용 → 사람 말 보고. init도 이 경로를 그대로 쓴다."""
-    install_total = sum(len(item.install) for item in starter.items)
     console.print(f"\n🎒 [bold]{starter.title}[/bold]")
     if starter.description:
         console.print(f"   {starter.description}")
-    console.print(
-        f"   출처 {len(starter.items)}곳에서 가져와, {install_total}개를 표면에 올립니다."
-    )
+    ref_count = sum(1 for item in starter.items if item.embed is None)
+    embed_count = len(starter.items) - ref_count
+    line = f"   출처 {ref_count}곳에서 가져와, {starter.install_count()}개를 표면에 올립니다."
+    if embed_count:
+        line += f" (세트에 실려온 본문 {embed_count}개 포함)"
+    console.print(line)
     if not yes and not typer.confirm("이 세트로 시작할까요?", default=True):
         console.print("적용하지 않았습니다.")
         return None
