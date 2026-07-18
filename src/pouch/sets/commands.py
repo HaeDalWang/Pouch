@@ -12,6 +12,7 @@ from datetime import datetime
 import typer
 from rich.console import Console
 
+from pouch.confirm import confirm
 from pouch import paths
 from pouch.catalog.model import ToolKind
 from pouch.catalog.store import CatalogStore
@@ -135,7 +136,7 @@ def import_set(
         raise typer.Exit(code=1)
 
     dest = paths.sets_dir() / f"{starter.name}.json"
-    if dest.exists() and not yes and not typer.confirm(
+    if dest.exists() and not yes and not confirm(
         f"같은 이름 세트가 있습니다 — {dest}를 덮어쓸까요?", default=False
     ):
         console.print("들이지 않았습니다.")
@@ -205,7 +206,7 @@ def export(
         raise typer.Exit(code=1)
 
     dest = paths.sets_dir() / f"{name}.json"
-    if dest.exists() and not yes and not typer.confirm(f"{dest}를 덮어쓸까요?", default=False):
+    if dest.exists() and not yes and not confirm(f"{dest}를 덮어쓸까요?", default=False):
         console.print("내보내지 않았습니다.")
         return
 
@@ -241,7 +242,7 @@ def run_set_apply(starter: StarterSet, *, yes: bool) -> SetApplyReport | None:
     if embed_count:
         line += f" (세트에 실려온 본문 {embed_count}개 포함)"
     console.print(line)
-    if not yes and not typer.confirm("이 세트로 시작할까요?", default=True):
+    if not yes and not confirm("이 세트로 시작할까요?", default=True):
         console.print("적용하지 않았습니다.")
         return None
 

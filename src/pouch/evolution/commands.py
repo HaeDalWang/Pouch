@@ -20,6 +20,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from pouch.confirm import confirm
 from pouch import paths
 from pouch.catalog.boundary import plan_boundary_drop
 from pouch.catalog.model import alias_map
@@ -291,7 +292,7 @@ def _propose_drops(
         label = _REASON_LABEL.get(cand.reason, cand.reason)
         console.print(f"  • [cyan]{cand.entry_id}[/cyan] — {label}")
 
-    if not yes and not typer.confirm("\n이 도구들을 표면에서 내릴까요?", default=False):
+    if not yes and not confirm("\n이 도구들을 표면에서 내릴까요?", default=False):
         console.print("그대로 두었습니다. 언제든 다시 [cyan]pouch evolve[/cyan] 하세요.")
         return
 
@@ -372,7 +373,7 @@ def _propose_attaches(
 
     if not reattaches:
         return
-    if not yes and not typer.confirm("\n표면에 다시 올릴까요?", default=False):
+    if not yes and not confirm("\n표면에 다시 올릴까요?", default=False):
         console.print("그대로 두었습니다.")
         return
 
@@ -402,7 +403,7 @@ def _propose_memory_pending(
     for entry in entries:
         console.print(f"  • [cyan]{entry.name}[/cyan] ({entry.type.value}) — {entry.description}")
 
-    if not yes and not typer.confirm("\n확인하고 인덱스에 올릴까요?", default=False):
+    if not yes and not confirm("\n확인하고 인덱스에 올릴까요?", default=False):
         console.print("그대로 두었습니다. pending으로 남아있어요.")
         return
 
@@ -419,7 +420,7 @@ def _propose_memory_hygiene(
     for cand in candidates:
         console.print(f"  • [cyan]{cand.name}[/cyan] ({cand.type.value}) — {cand.detail}")
 
-    if not yes and not typer.confirm("\n인덱스에서 내릴까요?", default=False):
+    if not yes and not confirm("\n인덱스에서 내릴까요?", default=False):
         console.print("그대로 두었습니다. 다시 쓰고 싶으면 recall로 찾을 수 있어요.")
         return
 

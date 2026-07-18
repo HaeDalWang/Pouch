@@ -14,6 +14,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from pouch.confirm import confirm
 from pouch import paths
 from pouch.hosts.base import FileHostAdapter, HostAdapter
 from pouch.hosts.registry import (
@@ -103,7 +104,7 @@ def init(
     for line in reflect(answers, env):
         console.print(f"  {escape(line)}")
 
-    if not yes and not typer.confirm("\n맞아요? 이대로 담을까요?", default=True):
+    if not yes and not confirm("\n맞아요? 이대로 담을까요?", default=True):
         console.print("취소했습니다.")
         raise typer.Exit()
 
@@ -182,7 +183,7 @@ def _maybe_offer_adopt(*, yes: bool) -> None:
         f"\n🧠 Claude 네이티브 메모리 [bold]{len(items)}[/bold]건 발견 — "
         f"pouch로 넘기면 매 세션 주입은 {injected}건만(나머지는 주입 안 함·recall 가능)."
     )
-    if not yes and not typer.confirm(
+    if not yes and not confirm(
         "지금 pouch로 넘길까요? (원본·Claude 자동로드는 안전망으로 그대로 둡니다)", default=True
     ):
         console.print("   나중에 [cyan]pouch memory adopt[/cyan] 로 넘길 수 있습니다.")
@@ -256,7 +257,7 @@ def _maybe_link_hook(yes: bool) -> None:
         return
 
     names = ", ".join(a.display_name for a in (*hooks, *files))
-    if not yes and not typer.confirm(f"지금 연결할까요? ({names})", default=True):
+    if not yes and not confirm(f"지금 연결할까요? ({names})", default=True):
         console.print("   나중에 [cyan]pouch hook install[/cyan] 로 연결할 수 있습니다.")
         return
 

@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from pouch.confirm import confirm
 from pouch import paths
 from pouch.backup.local import backup_to_local, restore_from_local
 
@@ -62,7 +63,7 @@ def restore(
             "  • 덮기 전에 지금 상태를 스냅샷으로 남깁니다 (복원의 되돌리기).\n"
             "  • 백업 후 새로 생긴 파일은 사라지지만, 스냅샷 안에 살아있습니다."
         )
-        if not typer.confirm("복원할까요?", default=False):
+        if not confirm("복원할까요?", default=False):
             console.print("취소했습니다.")
             raise typer.Exit()
 

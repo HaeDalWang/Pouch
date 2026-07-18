@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from pouch.confirm import confirm
 from pouch.hosts.base import FileHostAdapter, HostAdapter
 from pouch.hosts.filesync import render_file_body
 from pouch.hosts.registry import (
@@ -77,7 +78,7 @@ def install(
     if not yes:
         console.print(_EXPLAIN)
         names = ", ".join(a.display_name for a in (*hooks, *files))
-        if not typer.confirm(f"연결 대상: {names}\n진행할까요?", default=True):
+        if not confirm(f"연결 대상: {names}\n진행할까요?", default=True):
             console.print("취소했습니다.")
             raise typer.Exit()
 

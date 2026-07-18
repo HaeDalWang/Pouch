@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from pouch.confirm import confirm
 from pouch import paths
 from pouch.catalog.importer import (
     PluginImportResult,
@@ -304,7 +305,7 @@ def _confirm_hook_install(entry: ToolEntry, *, yes: bool) -> bool:
         console.print(f"   [yellow]$ {hook.get('command', '')}[/yellow]")
     if yes:
         return True
-    return typer.confirm("이 명령이 실행되는 데 동의하나요?", default=False)
+    return confirm("이 명령이 실행되는 데 동의하나요?", default=False)
 
 
 @app.command("install")
@@ -506,7 +507,7 @@ def migrate(
         )
         return
 
-    if not yes and not typer.confirm(
+    if not yes and not confirm(
         "\n이 도구들을 소스로 되돌릴까요? (적용 전 백업을 뜹니다)", default=False
     ):
         console.print("그대로 두었습니다.")
