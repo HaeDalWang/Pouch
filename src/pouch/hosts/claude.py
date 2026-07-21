@@ -10,6 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from pouch import paths
+from pouch.hosts.base import (
+    LAYOUT_DOCS_FLAT,
+    LAYOUT_FILE,
+    LAYOUT_PLUGIN_CACHE,
+    LAYOUT_SKILLS_ROOT,
+    Toolbox,
+)
 from pouch.hooks.settings import (
     is_installed,
     is_usage_hook_installed,
@@ -30,6 +37,36 @@ class ClaudeAdapter:
 
     def config_path(self) -> Path:
         return paths.claude_settings_path()
+
+    def toolbox_paths(self) -> tuple[Toolbox, ...]:
+        """Claude가 도구를 두는 자리들(실측 2026-07-21).
+
+        플러그인 캐시 밖, 유저가 직접 깐 것도 훑는다 — 실측상 여기가 더 크다
+        (스킬 160 · 명령 79 · 에이전트 50 · 규칙 99). 평면 문서는 파일만 봐선
+        종류를 알 수 없어 자리가 종류를 답한다.
+        """
+        from pouch.catalog.model import ToolKind
+
+        return (
+            Toolbox(path=paths.claude_skills_dir(), layout=LAYOUT_SKILLS_ROOT),
+            Toolbox(path=paths.claude_plugins_cache_dir(), layout=LAYOUT_PLUGIN_CACHE),
+            Toolbox(path=paths.claude_mcp_config_path(), layout=LAYOUT_FILE),
+            Toolbox(
+                path=paths.claude_agents_dir(),
+                layout=LAYOUT_DOCS_FLAT,
+                kind=ToolKind.AGENT,
+            ),
+            Toolbox(
+                path=paths.claude_commands_dir(),
+                layout=LAYOUT_DOCS_FLAT,
+                kind=ToolKind.COMMAND,
+            ),
+            Toolbox(
+                path=paths.claude_rules_dir(),
+                layout=LAYOUT_DOCS_FLAT,
+                kind=ToolKind.RULE,
+            ),
+        )
 
     def load(self, path: Path) -> dict:
         return load_settings(path)

@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pouch import paths
+from pouch.hosts.base import LAYOUT_SKILLS_ROOT, Toolbox
 from pouch.hosts.filewrite import write_snapshot
 
 # steering 파일 맨 앞에 오는 frontmatter — 모든 세션에 항상 실리게 한다.
@@ -29,6 +30,13 @@ class KiroSteeringAdapter:
 
     def is_supported(self) -> bool:
         return paths.kiro_home().exists()
+
+    def toolbox_paths(self) -> tuple[Toolbox, ...]:
+        """Kiro도 도구통이 있다(`~/.kiro/skills/`, 실측 2026-07-21).
+
+        기억은 파일로만 받지만(사용 로깅 불가) 도구는 따로 둔다 — 두 축이 다르다.
+        """
+        return (Toolbox(path=paths.kiro_skills_dir(), layout=LAYOUT_SKILLS_ROOT),)
 
     def content_path(self) -> Path:
         return paths.kiro_steering_path()

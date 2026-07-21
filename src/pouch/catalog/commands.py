@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -38,6 +39,9 @@ from pouch.evolution.orchestrate import migrate as migrate_unused
 from pouch.evolution.orchestrate import plan_migrate
 from pouch.evolution.state import active_entries
 
+if TYPE_CHECKING:
+    from pouch.catalog.sweep import SweepReport
+
 app = typer.Typer(
     help="📦 catalog — 주머니에 담을 수 있는 것의 레지스트리.",
     no_args_is_help=True,
@@ -47,6 +51,7 @@ console = Console()
 _SKILL_FILENAME = "SKILL.md"
 _MCP_FILENAME = ".mcp.json"
 _HOOKS_FILENAME = "hooks.json"
+_SWEEP_SKIP_PREVIEW = 5  # 건너뛴 것은 몇 줄만 — 전량은 첫 화면을 덮는다
 
 
 def _now() -> str:
@@ -276,11 +281,58 @@ def _list_project_catalog() -> None:
         console.print(f"  • [cyan]{entry.id}[/cyan] ({entry.ownership.value}){tags}")
 
 
+@app.command("sweep")
+def sweep_command() -> None:
+    """이미 깔린 도구를 하네스별로 훑어 소스에 재운다(카탈로그·표면은 안 건드림)."""
+    report = run_sweep()
+    print_sweep_report(report)
+
+
+def run_sweep() -> "SweepReport":
+    """훑기를 실제 하네스 목록으로 돌린다(CLI·init 공용).
+
+    지연 import — sweep이 이 모듈의 find_plugin_roots를 쓰므로 순환을 피한다.
+    """
+    from pouch.catalog.sweep import record_swept, sweep_toolboxes
+    from pouch.hosts.registry import toolbox_hosts
+
+    now = _now()
+    report = sweep_toolboxes(
+        source_store=CatalogStore(catalog_dir=paths.sources_dir()),
+        hosts=toolbox_hosts(),
+        synced_at=now,
+    )
+    # 훑은 적 있다고 표식을 남긴다 — 상태 화면의 "한 번 알려주기"가 이걸 보고 멈춘다.
+    record_swept(now=now)
+    return report
+
+
+def print_sweep_report(report: "SweepReport") -> None:
+    """훑기 결과를 사람 말로 — 어디서 몇 개가 나왔고, 다음에 뭘 하면 되는지."""
+    if not report.found:
+        console.print("🧹 훑을 도구통을 못 찾았습니다 [dim](하네스가 안 깔렸을 수 있어요)[/dim]")
+        return
+
+    if report.staged:
+        where = ", ".join(f"{host} {count}개" for host, count in report.per_host.items())
+        console.print(f"🧹 [green]{len(report.staged)}개[/green]를 소스에 재웠습니다 [dim]({where})[/dim]")
+        console.print("   [dim]쓰거나 install하면 카탈로그로 진입합니다 — 표면은 그대로입니다[/dim]")
+    if report.already:
+        console.print(f"   [dim]{report.already}개는 이미 알고 있어 그대로 뒀습니다[/dim]")
+    for skip in report.skipped[:_SWEEP_SKIP_PREVIEW]:
+        console.print(f"[yellow]![/yellow] 건너뜀: {skip}")
+    if len(report.skipped) > _SWEEP_SKIP_PREVIEW:
+        console.print(f"[dim]   … 건너뛴 것 {len(report.skipped) - _SWEEP_SKIP_PREVIEW}개 더[/dim]")
+    if report.staged:
+        console.print("   보기: [cyan]pouch catalog list --sources[/cyan]")
+
+
 def _list_sources() -> None:
     """소스 스테이징 목록 — 진입 전에 재워둔 것(카탈로그 목록엔 안 뜨는 것)."""
     staged = list(CatalogStore(catalog_dir=paths.sources_dir()).list())
     if not staged:
         console.print("📚 소스에 재워둔 것이 없습니다.")
+        console.print("   훑기: [cyan]pouch catalog sweep[/cyan] [dim](이미 깔린 것 찾아 재우기)[/dim]")
         console.print("   담기: [cyan]pouch catalog import <경로>[/cyan]")
         return
     catalog_ids = {e.id for e in CatalogStore().list()}

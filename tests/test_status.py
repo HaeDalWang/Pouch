@@ -206,3 +206,28 @@ def test_aliased_usage_is_inside_pouch_and_canonicalized() -> None:
 
     assert status.outside_pouch == ()
     assert status.recent_top[0] == ("exa", 2)
+
+
+def test_status_tells_a_returning_user_to_sweep() -> None:
+    """이미 쓰던 사람에게 한 번 알려준다 — 무엇을 얻는지까지 명확히(배승도 2026-07-21)."""
+    status = build_status(
+        version="0.1.0", revision=None, memory_count=0, memory_preview=(),
+        entries=[], active_ids=set(), events=[], now="2026-07-21T10:00:00",
+        never_swept=True,
+    )
+
+    rendered = "\n".join(render_lines(status))
+
+    assert "pouch catalog sweep" in rendered
+    assert "대기실" in rendered
+
+
+def test_status_stays_quiet_once_swept() -> None:
+    """훑고 나면 다시 말하지 않는다 — 잔소리 금지."""
+    status = build_status(
+        version="0.1.0", revision=None, memory_count=0, memory_preview=(),
+        entries=[], active_ids=set(), events=[], now="2026-07-21T10:00:00",
+        never_swept=False,
+    )
+
+    assert "pouch catalog sweep" not in "\n".join(render_lines(status))
