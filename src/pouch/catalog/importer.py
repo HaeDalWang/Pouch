@@ -133,6 +133,15 @@ def import_vendored_doc(
     description = str(meta.get("description", ""))
 
     existing = store.get(entry_id)
+    if existing is not None and existing.kind is not kind:
+        # 장부는 평면(`<id>.md`)이라 종류가 달라도 이름이 같으면 한 자리를 다툰다.
+        # 실측 2026-07-21: agent-sort·context-budget·rules-distill이 스킬과 명령으로
+        # 둘 다 존재해, 훑기가 스킬을 소리 없이 명령으로 덮었다. 조용한 손실보다
+        # 시끄러운 거절이 낫다 — 먼저 담긴 것을 지키고 이유를 알린다.
+        raise ValueError(
+            f"'{entry_id}'는 이미 {existing.kind.value}로 담겨 있어 "
+            f"{kind.value}로 덮지 않았습니다(이름이 겹칩니다): {path}"
+        )
     preserved_overlay = existing.overlay if existing else None
     preserved_tags = existing.tags if existing else tags
 

@@ -21,18 +21,54 @@ from pouch.catalog.model import Ownership, ToolEntry, ToolKind
 from pouch.hooks.settings import load_settings, with_recipe_installed, write_settings
 
 
+# 종류별 서랍 — (하위 폴더, 폴더를 한 겹 더 파나).
+# 하네스가 이미 나눠둔 자리를 그대로 쓴다(배승도 락 2026-07-21). importer가 읽어올 때
+# 쓰는 규칙(_DOC_SUBDIRS)의 거울상이다: 스킬만 `<이름>/SKILL.md`로 한 겹 들어가고,
+# 에이전트·명령은 평면 `<이름>.md`. 여기 없는 종류는 올릴 자리가 없다는 뜻이다 —
+# 엉뚱한 서랍에 놓느니 거절한다.
+_DRAWERS: dict[ToolKind, tuple[str, bool]] = {
+    ToolKind.SKILL: ("skills", True),
+    ToolKind.AGENT: ("agents", False),
+    ToolKind.COMMAND: ("commands", False),
+}
+
+
+def target_path_for(entry: ToolEntry, *, base: Path) -> Path:
+    """이 항목을 올릴 자리. 서랍이 없는 종류는 ValueError로 정직하게 거절한다."""
+    drawer = _DRAWERS.get(entry.kind)
+    if drawer is None:
+        raise ValueError(
+            f"'{entry.id}'({entry.kind.value})는 올릴 자리가 정해져 있지 않습니다."
+        )
+    folder, nested = drawer
+    if nested:
+        return base / folder / entry.id / "SKILL.md"
+    return base / folder / f"{entry.id}.md"
+
+
+def install_doc_file(entry: ToolEntry, *, base: Path) -> Path:
+    """문서형 항목(스킬·에이전트·명령)을 종류에 맞는 서랍에 배치한다.
+
+    `base`는 서랍들을 품은 자리(예: `~/.claude`)다 — 서랍 이름을 경로에서 추론하지
+    않는다. owned는 catalog의 body를, vendored는 upstream을 다시 읽어 본문을 채운다.
+    vendored인데 upstream이 사라졌으면 FileNotFoundError로 보고한다(조용히 삼키지 않음).
+    """
+    return _write_doc(entry, target_path_for(entry, base=base))
+
+
 def install_skill_file(entry: ToolEntry, *, skills_dir: Path) -> Path:
     """skill 항목을 `<skills_dir>/<id>/SKILL.md`로 배치한다.
 
-    owned는 catalog의 body를, vendored는 upstream을 다시 읽어 본문을 채운다.
-    vendored인데 upstream이 사라졌으면 FileNotFoundError로 보고한다(조용히 삼키지 않음).
+    스킬 서랍을 직접 받는 기존 계약을 유지한다 — 호출부가 `--skills-dir`로 임의
+    위치를 지정할 수 있어, 경로 이름에서 다른 서랍을 추론하면 안 된다.
     """
+    return _write_doc(entry, skills_dir / entry.id / "SKILL.md")
+
+
+def _write_doc(entry: ToolEntry, path: Path) -> Path:
+    """본문을 확보해 주어진 자리에 쓴다(서랍 계산과 쓰기를 분리)."""
     body = _resolve_body(entry)
-
-    target_dir = skills_dir / entry.id
-    target_dir.mkdir(parents=True, exist_ok=True)
-    path = target_dir / "SKILL.md"
-
+    path.parent.mkdir(parents=True, exist_ok=True)
     meta = {"name": entry.id, "description": entry.description}
     path.write_text(frontmatter.dumps(frontmatter.Post(body, **meta)), encoding="utf-8")
     return path
@@ -110,11 +146,13 @@ def install_entry(
     now: str | None = None,
     state_path: Path | None = None,
     settings_path: Path | None = None,
+    surface_base: Path | None = None,
 ) -> Path:
-    """ownership에 따라 설치하고, 결과 경로를 반환한다.
+    """ownership과 종류에 따라 설치하고, 결과 경로를 반환한다.
 
     skill(owned/vendored)이면 SKILL.md 경로, linked면 배선한 설정 경로를 돌려준다
-    (mcp → .mcp.json / hook → settings.json).
+    (mcp → .mcp.json / hook → settings.json). 에이전트·명령은 각자의 서랍으로 간다 —
+    `surface_base`(서랍들을 품은 자리, 기본은 스킬 서랍의 부모)가 기준이다.
     설치는 활성 표면에 올리는 유일한 관문이라, 여기서 state.json에 active로 기록한다
     (evolve가 볼 데이터를 심는다). 재부착이면 installed_at을 갱신해 시계를 리셋한다.
     시계는 이 경계에서만 읽는다(now 미지정 시).
@@ -131,8 +169,13 @@ def install_entry(
     elif entry.ownership is Ownership.LINKED:
         register_mcp(mcp_config_path, entry)
         result = mcp_config_path
-    else:
+    elif entry.kind is ToolKind.SKILL:
         result = install_skill_file(entry, skills_dir=skills_dir)
+    else:
+        # 에이전트·명령은 스킬과 다른 서랍에 산다(2026-07-21). 전에는 여기로 오는
+        # 것이 전부 스킬 폴더에 스킬인 척 쓰였다 — 하네스가 그 자리를 안 읽으므로
+        # 올려도 살지 않았다. 서랍이 없는 종류는 target_path_for가 거절한다.
+        result = install_doc_file(entry, base=surface_base or skills_dir.parent)
 
     stamp = now or datetime.now().isoformat(timespec="seconds")
     record_installed(entry.id, now=stamp, state_path=state_path)
