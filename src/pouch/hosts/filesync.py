@@ -21,8 +21,8 @@ from pouch.memory.model import MemoryEntry, MemoryScope
 def render_file_body(entries: Iterable[MemoryEntry]) -> str:
     """파일 호스트에 담을 본문 — 전역 기억만, 세션-휘발 구역 없음.
 
-    훅 통로의 render_session_context와 달리 정렬 체크포인트·먼저 내미는 제안 쪽지를
-    싣지 않는다(스냅샷에 담으면 낡는다). 파일 = "안정적으로 기억하는 것"뿐.
+    훅 통로의 render_session_context와 달리 먼저 내미는 제안 쪽지를 싣지 않는다
+    (스냅샷에 담으면 낡는다). 파일 = "안정적으로 기억하는 것"뿐.
     """
     from pouch.memory.context import render_context
 

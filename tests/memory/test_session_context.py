@@ -91,45 +91,13 @@ def test_contract4_default_note_zone_is_silent() -> None:
     assert "---" not in out  # 쪽지 구역 흔적 없음
 
 
-def test_checkpoint_protocol_always_in_fixed_zone() -> None:
-    # 체크포인트 규약은 앵커·기억 유무와 무관하게 항상 고정 구역에 실린다(기능 핵심).
-    from pouch.checkpoint.anchor import Anchor
-
-    # 기억이 0개여도 규약은 주입된다
-    empty = render_session_context([])
-    assert "Alignment Checkpoint" in empty
-    assert "◆ GOAL:" in empty
-
-    # 앵커가 있으면 그 목표가 규약에 박힌다
-    with_anchor = render_session_context(
-        [], anchor=Anchor(goal="my-goal", set_at="2026-07-14T00:00:00")
-    )
-    assert "my-goal" in with_anchor
-
-
-def test_checkpoint_below_boundary_above_memory() -> None:
-    # 배치: 경계(안전 최우선) → 체크포인트 규약 → 기억 인덱스
-    user = MemoryEntry(
-        name="prefers-uv",
-        description="파이썬은 uv",
-        body="본문",
-        type=MemoryType.USER,
-        scope=MemoryScope.GLOBAL,
-        created=date(2026, 7, 9),
-    )
-    out = render_session_context([_boundary(), user])
-
-    assert out.index("Autonomy Boundaries") < out.index("Alignment Checkpoint")
-    assert out.index("Alignment Checkpoint") < out.index("prefers-uv")
-
-
-def test_checkpoint_note_failure_still_preserves_checkpoint() -> None:
-    # 쪽지가 터져도 체크포인트 규약(고정 구역)은 그대로 나온다(격리)
-    def _boom() -> str:
-        raise RuntimeError("쪽지 터짐")
-
-    out = render_session_context([], note_zone=_boom)
-    assert "Alignment Checkpoint" in out
+def test_checkpoint_protocol_not_injected() -> None:
+    # 체크포인트 규약은 주입에서 내렸다(2026-07-21) — 세션 통로에 실리지 않는다.
+    # 코드(pouch checkpoint set/show/clear)는 살아있되 표면에서만 내린 것.
+    out = render_session_context([_boundary()])
+    assert "Alignment Checkpoint" not in out
+    assert "⟦ALIGN⟧" not in out
+    assert "◆ GOAL:" not in out
 
 
 def test_how_to_remember_always_injected() -> None:
