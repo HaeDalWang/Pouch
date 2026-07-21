@@ -47,6 +47,7 @@ class PouchStatus:
     vendored: int
     linked: int
     staged_count: int  # 소스에 재워뒀지만 아직 카탈로그로 진입 안 한 것(가리키기만 한 것)
+    never_swept: bool  # 도구통을 한 번도 안 훑음 — 이미 쓰던 사람에게 한 번만 알린다
     active_count: int
     core_count: int  # 지속·빈도로 손에 맞은 핵심 도구 수(전체 이력 기준)
     learned_interests: tuple[str, ...]  # 핵심 도구가 달고 온 토큰 = 실사용으로 배운 관심사
@@ -67,6 +68,7 @@ def build_status(
     memory_count: int = 0,
     memory_preview: tuple[str, ...] = (),
     staged_count: int = 0,
+    never_swept: bool = False,
     hosts: tuple[HostLink, ...] = (),
 ) -> PouchStatus:
     """스냅샷을 계산한다(순수 — 시계·IO 없음, now·hosts·기억 요약은 주입)."""
@@ -97,6 +99,7 @@ def build_status(
         vendored=by_ownership[Ownership.VENDORED],
         linked=by_ownership[Ownership.LINKED],
         staged_count=staged_count,
+        never_swept=never_swept,
         active_count=len(active_ids & catalog_ids),
         core_count=len(core),
         learned_interests=learned,
@@ -176,6 +179,7 @@ def gather_status(*, now: str) -> PouchStatus:
     """현재 주머니 상태를 파일들에서 모은다(IO는 여기서만)."""
     from pouch import __version__, paths
     from pouch.catalog.store import CatalogStore
+    from pouch.catalog.sweep import has_swept
     from pouch.evolution.state import active_entries
     from pouch.evolution.usage_log import read_events
 
@@ -194,6 +198,7 @@ def gather_status(*, now: str) -> PouchStatus:
         memory_count=memory_count,
         memory_preview=_memory_preview(_MEM_PREVIEW_N),
         staged_count=staged_count,
+        never_swept=not has_swept(),
         entries=list(CatalogStore().list()),
         active_ids=set(active_entries()),
         events=read_events(),
@@ -243,6 +248,13 @@ def _render_pouch(status: PouchStatus) -> list[str]:
             f" · linked {status.linked}[/dim] · 표면 {status.active_count})"
         )
     lines = [catalog_line]
+    if status.never_swept:
+        # 이미 쓰던 사람에게 딱 한 번 — 훑고 나면 표식이 남아 다시 뜨지 않는다.
+        # 무엇을 하면 무엇을 얻는지 한 줄에 못박는다(배승도 2026-07-21).
+        lines.append(
+            f"  {_INDENT}[yellow]![/yellow] 이미 깔린 도구를 아직 안 찾아봤습니다"
+            " — [cyan]pouch catalog sweep[/cyan] 을 해야 대기실에 들어갑니다"
+        )
     if status.staged_count:
         lines.append(
             f"  {_INDENT}[dim]+ 소스 {status.staged_count}개 대기[/dim]"

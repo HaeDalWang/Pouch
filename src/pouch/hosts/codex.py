@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pouch import paths
+from pouch.hosts.base import LAYOUT_FILE, LAYOUT_SKILLS_ROOT, Toolbox
 from pouch.hooks.settings import (
     is_installed,
     is_usage_hook_installed,
@@ -31,6 +32,17 @@ class CodexAdapter:
 
     def config_path(self) -> Path:
         return paths.codex_hooks_path()
+
+    def toolbox_paths(self) -> tuple[Toolbox, ...]:
+        """Codex가 도구를 두는 자리 — 스킬 폴더·훅 파일(실측 2026-07-21).
+
+        `~/.codex/agents/*.toml`도 있지만 pouch가 아는 형식이 아니라 안 훑는다
+        (지어내지 않는다 — 읽을 줄 알게 되면 그때 칸을 늘린다).
+        """
+        return (
+            Toolbox(path=paths.codex_skills_dir(), layout=LAYOUT_SKILLS_ROOT),
+            Toolbox(path=paths.codex_hooks_path(), layout=LAYOUT_FILE),
+        )
 
     def load(self, path: Path) -> dict:
         return load_settings(path)

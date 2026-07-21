@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pouch.hosts.base import FileHostAdapter, HostAdapter
+from pouch.hosts.base import FileHostAdapter, HostAdapter, ToolboxHost
 from pouch.hosts.claude import ClaudeAdapter
 from pouch.hosts.codex import CodexAdapter
 from pouch.hosts.kiro import KiroSteeringAdapter
@@ -51,6 +51,16 @@ def get_file_adapter(name: str) -> FileHostAdapter | None:
         if adapter.name == name:
             return adapter
     return None
+
+
+def toolbox_hosts() -> tuple[ToolboxHost, ...]:
+    """도구통 위치를 아는 하네스 전체(훅형+파일형).
+
+    도구통은 배선 종류와 직교하므로 두 목록을 합쳐서 훑는다. 계약을 안 채운
+    어댑터는 조용히 빠진다 — 새 하네스가 이 칸을 채우기 전에도 나머지는 돈다.
+    """
+    everyone: tuple[object, ...] = (*_HOOK_ADAPTERS, *_FILE_ADAPTERS)
+    return tuple(a for a in everyone if isinstance(a, ToolboxHost))
 
 
 def detect_hook_installed() -> list[HostAdapter]:

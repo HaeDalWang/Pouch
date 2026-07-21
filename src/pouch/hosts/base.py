@@ -7,8 +7,52 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from pouch.catalog.model import ToolKind
+
+# 도구통 생김새 — 훑기가 "이 경로에서 후보를 어떻게 뽑나"를 아는 세 가지.
+# 경로만으론 판별이 안 된다: `~/.claude`는 skills/를 품었다는 이유로 plugin으로
+# 오인되고, `~/.claude/skills`는 그 자체가 스킬이 아니라 스킬들의 부모다.
+LAYOUT_SKILLS_ROOT = "skills-root"  # 자식 디렉토리 하나하나가 스킬
+LAYOUT_PLUGIN_CACHE = "plugin-cache"  # 안쪽에 플러그인 루트가 묻혀 있음
+LAYOUT_FILE = "file"  # 이 파일 자체가 후보(.mcp.json·hooks.json)
+LAYOUT_DOCS_FLAT = "docs-flat"  # 폴더 안 `.md` 하나하나가 도구(agents·commands·rules)
+
+
+@dataclass(frozen=True)
+class Toolbox:
+    """한 하네스가 도구를 두는 자리 하나 — 어디에(path) 어떤 모양으로(layout).
+
+    `kind`는 DOCS_FLAT처럼 파일만 봐서는 종류를 알 수 없을 때 자리가 답한다 —
+    `agents/`에 있으면 에이전트, `commands/`에 있으면 명령이다(하네스의 약속).
+    """
+
+    path: Path
+    layout: str
+    kind: "ToolKind | None" = None
+
+
+@runtime_checkable
+class ToolboxHost(Protocol):
+    """도구를 어디 두는지 아는 하네스 — 훑기(sweep)가 이 칸만 보고 돈다.
+
+    훅형(HostAdapter)·파일형(FileHostAdapter)과 **직교**한다. Kiro는 기억을 파일로
+    받지만 도구통은 따로 있고(실측), 반대 조합도 있을 수 있다. 그래서 별도 계약이다.
+
+    새 하네스를 붙일 때 이 칸만 채우면 훑기에 자동으로 편입된다 — 훑기 쪽 코드에
+    하네스 이름이 하드코딩되지 않는다.
+    """
+
+    name: str
+    display_name: str
+
+    def toolbox_paths(self) -> tuple[Toolbox, ...]:
+        """이 하네스가 도구를 두는 자리들. 없으면 빈 튜플(안 깔린 건 흠이 아니다)."""
+        ...
 
 
 @runtime_checkable

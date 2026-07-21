@@ -19,3 +19,7 @@ def _isolate_home(tmp_path_factory, monkeypatch) -> None:
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
     # 백업 목적지도 격리 — migrate·backup 커맨드가 실제 ~/pouch-backups에 쓰지 않게.
     monkeypatch.setenv("POUCH_BACKUP_DIR", str(backup_home))
+    # 나머지 하네스 홈도 격리 — 훑기(sweep)가 실제 ~/.codex·~/.kiro의 도구통을
+    # 읽어들이면 테스트가 이 머신에 깔린 것에 따라 달라진다(2026-07-21).
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path_factory.mktemp("codex_home")))
+    monkeypatch.setenv("KIRO_HOME", str(tmp_path_factory.mktemp("kiro_home")))

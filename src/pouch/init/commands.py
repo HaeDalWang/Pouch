@@ -115,10 +115,29 @@ def init(
         store.save(memory)
     console.print(f"[green]✓[/green] {len(memories)}개 기억을 담았습니다.")
 
+    _sweep_toolboxes()
     _maybe_offer_set(answers, yes=yes)
     _maybe_offer_adopt(yes=yes)
     _maybe_offer_boundaries(yes=yes)
     _maybe_link_hook(yes=yes)
+
+
+def _sweep_toolboxes() -> None:
+    """이미 깔린 도구를 하네스별로 훑어 소스에 재운다 — 묻지 않는다.
+
+    배승도 락(2026-07-21): "대기실까지 올리는 거는 최대한 자동화시키는 게 좋아.
+    이러한 도구를 모르는 사람들은 영원히 빈칸으로 살 거야." 표면(연장통)을 안
+    건드리므로 동의 관문 없이 돈다 — 대신 무엇이 담겼는지는 항상 보여준다.
+
+    훑기가 실패해도 init을 멈추지 않는다(주 목적은 기억 담기다).
+    """
+    from pouch.catalog.commands import print_sweep_report, run_sweep
+
+    console.print()
+    try:
+        print_sweep_report(run_sweep())
+    except OSError as exc:
+        console.print(f"[yellow]![/yellow] 도구통 훑기를 건너뜁니다: {exc}")
 
 
 def _maybe_offer_boundaries(*, yes: bool) -> None:

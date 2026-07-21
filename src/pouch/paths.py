@@ -109,6 +109,16 @@ def state_path() -> Path:
     return global_root() / "state.json"
 
 
+def sweep_marker_path() -> Path:
+    """도구통 훑기 표식(`~/.pouch/sweep.json`).
+
+    "이 주머니가 한 번이라도 훑은 적 있나"만 담는다. init은 처음 한 번만 도니까,
+    이미 pouch를 쓰던 사람에게 훑기를 한 번 알려주려면 이 근거가 필요하다.
+    state.json(도구별 설치 기록)과 스키마가 달라 섞지 않고 따로 둔다.
+    """
+    return global_root() / "sweep.json"
+
+
 def proposals_ledger_path() -> Path:
     """제안 장부 사이드카(`~/.pouch/proposals.json`).
 
@@ -188,6 +198,55 @@ def claude_skills_dir() -> Path:
     return base / "skills"
 
 
+def claude_plugins_cache_dir() -> Path:
+    """Claude Code 플러그인 캐시(`~/.claude/plugins/cache/`).
+
+    실측(2026-07-21): 안쪽이 `<마켓>/<플러그인>/<버전>/` 3단이라 이 경로를 그대로
+    classify하면 실패한다 — find_plugin_roots로 파고들어야 한다(훑기가 그렇게 쓴다).
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "plugins" / "cache"
+
+
+def claude_agents_dir() -> Path:
+    """Claude Code 에이전트 서랍(`~/.claude/agents/`) — 평면 `<이름>.md`."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "agents"
+
+
+def claude_commands_dir() -> Path:
+    """Claude Code 명령 서랍(`~/.claude/commands/`) — 평면 `<이름>.md`."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "commands"
+
+
+def claude_rules_dir() -> Path:
+    """Claude Code 규칙 폴더(`~/.claude/rules/`).
+
+    다른 서랍과 달리 `<분류>/<이름>.md`로 한 겹 더 들어가기도 한다(실측: 최상위 11개
+    + 하위 88개). 그래서 같은 파일명이 여러 곳에 겹치고, id를 `부모__이름`으로 접는다.
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / "rules"
+
+
+def claude_mcp_config_path() -> Path:
+    """Claude Code 전역 MCP 설정(`~/.claude/.mcp.json`)."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = Path(override).expanduser() if override else Path.home() / ".claude"
+    return base / ".mcp.json"
+
+
+def codex_home() -> Path:
+    """Codex 전역 루트(`~/.codex/`). `CODEX_HOME`으로 오버라이드 가능."""
+    override = os.environ.get("CODEX_HOME")
+    return Path(override).expanduser() if override else Path.home() / ".codex"
+
+
 def codex_hooks_path() -> Path:
     """Codex 훅 설정 파일 경로(`~/.codex/hooks.json`).
 
@@ -195,9 +254,12 @@ def codex_hooks_path() -> Path:
     Claude Code와 훅 JSON 스키마가 같아 claude 어댑터의 순수 함수를 재사용한다 —
     다른 건 이 경로와, 설치 후 안내(experimental 플래그·훅 신뢰 등록)뿐이다.
     """
-    override = os.environ.get("CODEX_HOME")
-    base = Path(override).expanduser() if override else Path.home() / ".codex"
-    return base / "hooks.json"
+    return codex_home() / "hooks.json"
+
+
+def codex_skills_dir() -> Path:
+    """Codex 스킬 폴더(`~/.codex/skills/`) — 실측 2026-07-21."""
+    return codex_home() / "skills"
 
 
 def kiro_home() -> Path:
@@ -209,6 +271,15 @@ def kiro_home() -> Path:
     """
     override = os.environ.get("KIRO_HOME")
     return Path(override).expanduser() if override else Path.home() / ".kiro"
+
+
+def kiro_skills_dir() -> Path:
+    """Kiro 스킬 폴더(`~/.kiro/skills/`) — 실측 2026-07-21.
+
+    Kiro는 기억을 steering 파일로만 받지만(사용 로깅 불가) 도구통은 따로 있다.
+    "기억을 어떻게 넣나"와 "도구를 어디 두나"는 서로 다른 축이다.
+    """
+    return kiro_home() / "skills"
 
 
 def kiro_steering_path() -> Path:
