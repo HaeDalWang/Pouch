@@ -41,6 +41,35 @@ def test_project_memory_dir_under_root(tmp_path: Path) -> None:
     assert paths.project_memory_dir(tmp_path) == tmp_path / ".pouch" / "memory"
 
 
+def test_project_anchor_path_under_root(tmp_path: Path) -> None:
+    # Arrange
+    (tmp_path / ".git").mkdir()
+
+    # Act / Assert
+    assert paths.project_anchor_path(tmp_path) == tmp_path / ".pouch" / "anchor.json"
+
+
+def test_project_anchor_path_none_outside_project(tmp_path: Path) -> None:
+    # 프로젝트 표식이 없으면 프로젝트 앵커 자리도 없다.
+    assert paths.project_anchor_path(tmp_path) is None
+
+
+def test_resolve_anchor_path_prefers_project(tmp_path: Path) -> None:
+    # Arrange
+    (tmp_path / ".git").mkdir()
+
+    # Act / Assert — 프로젝트 안이면 글로벌로 새지 않는다(오염 방지의 핵심).
+    assert paths.resolve_anchor_path(tmp_path) == tmp_path / ".pouch" / "anchor.json"
+
+
+def test_resolve_anchor_path_falls_back_to_global(tmp_path: Path, monkeypatch) -> None:
+    # Arrange — 프로젝트 밖에서 박은 목표는 글로벌 칸에 산다.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path / "home"))
+
+    # Act / Assert
+    assert paths.resolve_anchor_path(tmp_path) == paths.anchor_path()
+
+
 def test_global_memory_dir_under_home(monkeypatch) -> None:
     # 오버라이드를 걷어내고 '기본값'(~/.pouch)을 검증한다.
     monkeypatch.delenv("POUCH_HOME", raising=False)

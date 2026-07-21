@@ -18,6 +18,9 @@ runner = CliRunner()
 @pytest.fixture
 def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("POUCH_HOME", str(tmp_path / "global"))
+    # 앵커 자리가 프로젝트별이 된 뒤로 cwd도 격리해야 한다 — 안 그러면 이 repo를
+    # 프로젝트로 잡아 실제 `.pouch/anchor.json`에 쓴다(2026-07-21).
+    monkeypatch.chdir(tmp_path)
     return tmp_path
 
 

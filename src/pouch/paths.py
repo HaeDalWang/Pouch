@@ -130,14 +130,33 @@ def proposals_ledger_path() -> Path:
 
 
 def anchor_path() -> Path:
-    """정렬 앵커 사이드카(`~/.pouch/anchor.json`).
+    """글로벌 정렬 앵커 사이드카(`~/.pouch/anchor.json`).
 
-    "이번 작업 목표" 한 줄을 고정하는 자리. 세션 개념이 없으므로 단일 앵커이며,
-    매 작업 시작에 에이전트가 checkpoint set으로 덮어쓴다. proposals.json과 같은
+    "이번 작업 목표" 한 줄을 고정하는 자리 중 *프로젝트 밖* 몫. proposals.json과 같은
     정신 — 카탈로그와 분리된, 버려도 되는 라이프사이클 레이어. compaction으로
     목표가 흐려져도 이 사이드카가 ◆목표 슬롯의 재해석 없는 고정점이 된다.
     """
     return global_root() / "anchor.json"
+
+
+def project_anchor_path(start: Path | None = None) -> Path | None:
+    """현재 프로젝트의 앵커(`<repo>/.pouch/anchor.json`). 프로젝트 밖이면 None.
+
+    memory·catalog가 global/project 2계층인 것과 같은 확장이다.
+    """
+    root = find_project_root(start)
+    return (root / ".pouch" / "anchor.json") if root else None
+
+
+def resolve_anchor_path(start: Path | None = None) -> Path:
+    """지금 여기서 쓸 앵커 자리 — 프로젝트 안이면 프로젝트 것, 밖이면 글로벌.
+
+    **글로벌로 폴백하지 않는다**(프로젝트 안이면 프로젝트 앵커가 없어도 글로벌을
+    읽지 않는다). 앵커가 하나뿐이라 A 프로젝트의 목표가 B 프로젝트 세션 시작에
+    그대로 주입되던 사고(2026-07-21)를 자리 자체로 막는 게 목적이다 — 폴백을
+    허용하는 순간 오염 경로가 되살아난다.
+    """
+    return project_anchor_path(start) or anchor_path()
 
 
 def backup_dir() -> Path:

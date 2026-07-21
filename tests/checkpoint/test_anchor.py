@@ -8,6 +8,7 @@
   ③ 파일 없으면 None(첫 실행 안전)
   ④ 빈/goal 없는 파일도 None(깨진 사이드카 안전)
   ⑤ clear: 지웠으면 True, 애초에 없으면 False
+  ⑥ 자리는 프로젝트별이다 — 프로젝트 안에서 박은 목표가 남의 폴더로 새지 않는다
 """
 
 from __future__ import annotations
@@ -64,3 +65,41 @@ def test_contract5_clear_reports_whether_removed(tmp_path: Path) -> None:
     set_anchor("목표", now="2026-07-14T00:00:00", anchor_path=anchor_path)
     assert clear_anchor(anchor_path=anchor_path) is True
     assert load_anchor(anchor_path=anchor_path) is None
+
+
+def test_contract6_anchor_lands_in_project_slot(tmp_path: Path, monkeypatch) -> None:
+    """프로젝트 안에서 박은 목표는 그 프로젝트의 `.pouch/anchor.json`에 들어간다."""
+    # Arrange
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(project)
+
+    # Act
+    set_anchor("이 프로젝트 목표", now="2026-07-21T10:00:00")
+
+    # Assert
+    assert (project / ".pouch" / "anchor.json").exists()
+    assert not (tmp_path / "home" / "anchor.json").exists()
+
+
+def test_contract6_other_project_does_not_see_the_anchor(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """남의 폴더에서는 그 목표가 안 보인다 — 앵커가 따라다니던 사고의 재발 방지."""
+    # Arrange
+    first = tmp_path / "first"
+    (first / ".git").mkdir(parents=True)
+    second = tmp_path / "second"
+    (second / ".git").mkdir(parents=True)
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path / "home"))
+
+    monkeypatch.chdir(first)
+    set_anchor("첫 프로젝트 목표", now="2026-07-21T10:00:00")
+
+    # Act
+    monkeypatch.chdir(second)
+    loaded = load_anchor()
+
+    # Assert
+    assert loaded is None
