@@ -17,6 +17,24 @@
 4. **기록** — 동작이 바뀌면 [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md)에
    반영한다. 오너는 언제 돌아와도 그 문서 하나로 길을 찾을 수 있어야 한다.
 
+### 기록은 약속이 아니라 관문이다 (2026-07-21)
+
+④가 약속이라서 바쁘면 조용히 건너뛰어졌고, 건너뛴 사실이 아무 데도 안 남았다 —
+사흘치 작업과 일주일 묵은 기능이 로드맵·백로그 어디에도 없는 게 뒤늦게 드러났다.
+그래서 커밋 순간에 걸리게 했다(`.githooks/commit-msg`).
+
+```sh
+git config core.hooksPath .githooks   # 클론한 뒤 한 번
+```
+
+`feat:`·`fix:` 커밋이 `src/pouch/`를 건드리는데 HOW-IT-WORKS·ROADMAP·BACKLOG 중
+아무것도 안 바뀌었으면 막는다. 빠져나갈 문은 둘 — 커밋 메시지에 `[no-docs]`
+(영향 없음) 또는 `[docs-later]`(미룸). 미룬 건 부채로 남아 되찾을 수 있다:
+
+```sh
+git log --grep='\[docs-later\]' --oneline
+```
+
 ## PR을 낼 때
 
 - **한 PR에 새 설계 갈래는 하나만.** 문서 여러 개·결정 여러 개를 한꺼번에

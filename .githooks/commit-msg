@@ -1,0 +1,54 @@
+#!/bin/sh
+# 문서 밀림 방지 — 동작이 바뀌는 커밋에 문서 반영이 없으면 막는다.
+#
+# 왜 있나: CLAUDE.md 작업 고리의 "④ 기록"이 약속이라서 바쁘면 조용히 건너뛰어졌고,
+# 건너뛴 사실이 아무 데도 안 남았다. 2026-07-21에 사흘치 작업과 일주일 묵은 기능이
+# 로드맵·백로그 어디에도 없는 게 드러났다. 규칙은 코드로(ROADMAP 진행 원칙).
+#
+# commit-msg인 이유: pre-commit 시점엔 커밋 메시지가 아직 없어 빠져나갈 문을 못 읽는다.
+#
+# 설치: git config core.hooksPath .githooks  (저장소당 한 번)
+
+msg_file="$1"
+subject=$(head -1 "$msg_file")
+
+# 동작이 바뀌는 커밋만 본다. docs·chore·test·refactor는 그냥 지나간다.
+case "$subject" in
+  feat:*|fix:*) ;;
+  *) exit 0 ;;
+esac
+
+# 빠져나갈 문 둘 — 막기만 하면 --no-verify로 우회하고 흔적이 안 남는다.
+#   [no-docs]    문서 영향이 정말 없다
+#   [docs-later] 지금은 미룬다 (git log --grep 으로 부채를 되찾을 수 있게)
+if grep -qF '[no-docs]' "$msg_file" || grep -qF '[docs-later]' "$msg_file"; then
+  exit 0
+fi
+
+changed=$(git diff --cached --name-only)
+
+# 동작 코드가 안 바뀌었으면 볼 것 없다.
+echo "$changed" | grep -q '^src/pouch/' || exit 0
+
+# 문서를 하나라도 건드렸으면 통과.
+if echo "$changed" | grep -qE '^(docs/HOW-IT-WORKS\.md|ROADMAP\.md|BACKLOG\.md)$'; then
+  exit 0
+fi
+
+cat >&2 <<'MSG'
+
+✋ 동작이 바뀌는 커밋인데 문서가 그대로입니다.
+
+   바뀐 것: src/pouch/ 아래
+   안 바뀐 것: docs/HOW-IT-WORKS.md · ROADMAP.md · BACKLOG.md
+
+셋 중 하나입니다:
+
+  1) 문서를 고친다        — 오너가 언제 돌아와도 HOW-IT-WORKS 하나로 길을 찾아야 합니다
+  2) 정말 영향이 없다      — 커밋 메시지에 [no-docs] 를 넣으세요
+  3) 지금은 미룬다        — 커밋 메시지에 [docs-later] 를 넣으세요
+                            나중에 이렇게 되찾습니다:
+                            git log --grep='\[docs-later\]' --oneline
+
+MSG
+exit 1
