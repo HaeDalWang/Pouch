@@ -14,6 +14,7 @@ from pathlib import Path
 
 import frontmatter
 
+from pouch.catalog.docid import fold_rule_id
 from pouch.catalog.model import SURFACE_PLUGIN, Overlay, ToolEntry, ToolKind
 from pouch.catalog.store import CatalogStore
 
@@ -106,7 +107,8 @@ def _resolve_doc_id(path: Path, meta: dict, kind: ToolKind) -> str:
     if kind is ToolKind.RULE:
         # coding-style.md가 python/·common/… 여러 곳에 겹친다. 부모 디렉토리로
         # 스코프해 유니크하게 만들되, store가 평면(`<id>.md`)이라 "/" 대신 "__".
-        return f"{path.parent.name}__{path.stem}"
+        # 되펴기(install)와 같은 파일에 산다 — 한쪽만 바뀌면 왕복이 어긋난다.
+        return fold_rule_id(path.parent.name, path.stem)
     return path.stem
 
 

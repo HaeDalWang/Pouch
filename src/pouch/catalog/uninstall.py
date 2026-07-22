@@ -36,6 +36,27 @@ def uninstall_skill_file(entry_id: str, *, skills_dir: Path) -> bool:
     return True
 
 
+def uninstall_doc_file(entry: ToolEntry, *, base: Path) -> bool:
+    """문서형 항목을 제 서랍에서 걷어낸다 — install_doc_file의 거울상.
+
+    올릴 때 쓴 자리 계산(target_path_for)을 그대로 되쓴다. 자리 규칙이 한 곳에만
+    있어야 "올린 데"와 "내리는 데"가 어긋나지 않는다. 규칙처럼 폴더 안에 사는
+    종류도 **파일 하나만** 지운다 — 폴더째 지우면 같은 묶음의 이웃 규칙이
+    말없이 쓸려간다.
+    """
+    from pouch.catalog.install import target_path_for
+
+    try:
+        target = target_path_for(entry, base=base)
+    except ValueError:
+        # 올릴 자리가 없던 종류는 내릴 것도 없다(파일로 살지 않는다).
+        return False
+    if not target.exists():
+        return False
+    target.unlink()
+    return True
+
+
 def with_mcp_unregistered(config: dict, server_id: str) -> dict:
     """mcpServers에서 server_id를 뺀 새 설정을 반환한다(멱등). 다른 서버 보존."""
     if server_id not in config.get("mcpServers", {}):
@@ -66,11 +87,14 @@ def uninstall_entry(
     skills_dir: Path,
     mcp_config_path: Path,
     settings_path: Path | None = None,
+    surface_base: Path | None = None,
 ) -> None:
     """ownership에 따라 활성 표면에서 내린다. 카탈로그는 건드리지 않는다.
 
     hook이면 settings.json 배선에서, linked(mcp)면 mcpServers에서,
-    skill(owned/vendored)이면 SKILL.md 디렉토리에서 제거.
+    skill(owned/vendored)이면 SKILL.md 디렉토리에서 제거. 에이전트·명령·규칙은
+    각자의 서랍에서 파일 하나만 걷어낸다(2026-07-22 수리 — 전에는 여기까지 오는
+    것을 전부 스킬 서랍에서만 찾아, 다른 서랍 파일은 내려도 표면에 남았다).
     """
     if entry.kind is ToolKind.HOOK:
         from pouch import paths
@@ -83,7 +107,10 @@ def uninstall_entry(
         if mcp_config_path.exists():
             unregister_mcp(mcp_config_path, entry.id)
         return
-    uninstall_skill_file(entry.id, skills_dir=skills_dir)
+    if entry.kind is ToolKind.SKILL:
+        uninstall_skill_file(entry.id, skills_dir=skills_dir)
+        return
+    uninstall_doc_file(entry, base=surface_base or skills_dir.parent)
 
 
 def _load_json(path: Path) -> dict:

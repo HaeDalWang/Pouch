@@ -13,37 +13,64 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import frontmatter
 
+from pouch.catalog.docid import unfold_rule_id
 from pouch.catalog.model import Ownership, ToolEntry, ToolKind
 from pouch.hooks.settings import load_settings, with_recipe_installed, write_settings
 
 
-# 종류별 서랍 — (하위 폴더, 폴더를 한 겹 더 파나).
-# 하네스가 이미 나눠둔 자리를 그대로 쓴다(배승도 락 2026-07-21). importer가 읽어올 때
-# 쓰는 규칙(_DOC_SUBDIRS)의 거울상이다: 스킬만 `<이름>/SKILL.md`로 한 겹 들어가고,
-# 에이전트·명령은 평면 `<이름>.md`. 여기 없는 종류는 올릴 자리가 없다는 뜻이다 —
-# 엉뚱한 서랍에 놓느니 거절한다.
-_DRAWERS: dict[ToolKind, tuple[str, bool]] = {
-    ToolKind.SKILL: ("skills", True),
-    ToolKind.AGENT: ("agents", False),
-    ToolKind.COMMAND: ("commands", False),
+# 파일 모양 — 서랍 안에서 한 항목이 어떤 꼴로 사는가.
+LAYOUT_NESTED = "nested"  # `<id>/SKILL.md` — 스킬만 폴더를 한 겹 판다
+LAYOUT_FLAT = "flat"  # `<id>.md`
+LAYOUT_TREE = "tree"  # 접힌 id를 원래 폴더로 되편다(규칙)
+
+
+@dataclass(frozen=True)
+class _Drawer:
+    """한 종류가 표면에서 사는 모양 — 어느 폴더에, 어떤 꼴로, 머리말을 다나."""
+
+    folder: str
+    layout: str
+    with_frontmatter: bool = True
+
+
+# 종류별 서랍. 하네스가 이미 나눠둔 자리를 그대로 쓴다(배승도 락 2026-07-21).
+# importer가 읽어올 때 쓰는 규칙(_DOC_SUBDIRS)의 거울상이다. 여기 없는 종류는
+# 올릴 자리가 없다는 뜻이다 — 엉뚱한 서랍에 놓느니 거절한다.
+_DRAWERS: dict[ToolKind, _Drawer] = {
+    ToolKind.SKILL: _Drawer("skills", LAYOUT_NESTED),
+    ToolKind.AGENT: _Drawer("agents", LAYOUT_FLAT),
+    ToolKind.COMMAND: _Drawer("commands", LAYOUT_FLAT),
+    # 규칙은 평면 장부에 `<묶음>__<이름>`으로 접혀 있다 — 올릴 땐 되편다(락 2026-07-22).
+    # 머리말을 안 단다: 규칙 파일은 하네스가 평문으로 통째로 읽어 지침에 싣기 때문에,
+    # `---\nname: …` 을 얹으면 그 글자가 지침 안에 그대로 섞인다.
+    ToolKind.RULE: _Drawer("rules", LAYOUT_TREE, with_frontmatter=False),
 }
 
 
-def target_path_for(entry: ToolEntry, *, base: Path) -> Path:
-    """이 항목을 올릴 자리. 서랍이 없는 종류는 ValueError로 정직하게 거절한다."""
+def _drawer_for(entry: ToolEntry) -> _Drawer:
     drawer = _DRAWERS.get(entry.kind)
     if drawer is None:
         raise ValueError(
             f"'{entry.id}'({entry.kind.value})는 올릴 자리가 정해져 있지 않습니다."
         )
-    folder, nested = drawer
-    if nested:
-        return base / folder / entry.id / "SKILL.md"
-    return base / folder / f"{entry.id}.md"
+    return drawer
+
+
+def target_path_for(entry: ToolEntry, *, base: Path) -> Path:
+    """이 항목을 올릴 자리. 서랍이 없는 종류는 ValueError로 정직하게 거절한다."""
+    drawer = _drawer_for(entry)
+    root = base / drawer.folder
+    if drawer.layout == LAYOUT_NESTED:
+        return root / entry.id / "SKILL.md"
+    if drawer.layout == LAYOUT_TREE:
+        *folders, name = unfold_rule_id(entry.id)
+        return root.joinpath(*folders) / f"{name}.md"
+    return root / f"{entry.id}.md"
 
 
 def install_doc_file(entry: ToolEntry, *, base: Path) -> Path:
@@ -53,7 +80,12 @@ def install_doc_file(entry: ToolEntry, *, base: Path) -> Path:
     않는다. owned는 catalog의 body를, vendored는 upstream을 다시 읽어 본문을 채운다.
     vendored인데 upstream이 사라졌으면 FileNotFoundError로 보고한다(조용히 삼키지 않음).
     """
-    return _write_doc(entry, target_path_for(entry, base=base))
+    drawer = _drawer_for(entry)
+    return _write_doc(
+        entry,
+        target_path_for(entry, base=base),
+        with_frontmatter=drawer.with_frontmatter,
+    )
 
 
 def install_skill_file(entry: ToolEntry, *, skills_dir: Path) -> Path:
@@ -65,10 +97,19 @@ def install_skill_file(entry: ToolEntry, *, skills_dir: Path) -> Path:
     return _write_doc(entry, skills_dir / entry.id / "SKILL.md")
 
 
-def _write_doc(entry: ToolEntry, path: Path) -> Path:
-    """본문을 확보해 주어진 자리에 쓴다(서랍 계산과 쓰기를 분리)."""
+def _write_doc(entry: ToolEntry, path: Path, *, with_frontmatter: bool = True) -> Path:
+    """본문을 확보해 주어진 자리에 쓴다(서랍 계산과 쓰기를 분리).
+
+    머리말(frontmatter)은 하네스가 그걸 읽어 도구를 알아보는 종류에만 단다.
+    규칙처럼 평문 그대로 읽히는 종류엔 얹지 않는다 — 얹으면 지침에 섞인다.
+    """
     body = _resolve_body(entry)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if not with_frontmatter:
+        # 본문만 쓸 땐 끝 개행을 우리가 챙긴다 — 본문을 뽑는 과정에서 벗겨지는데,
+        # 머리말 경로는 dumps가 붙여줘서 이쪽만 개행 없이 끝나던 어긋남.
+        path.write_text(body if body.endswith("\n") else body + "\n", encoding="utf-8")
+        return path
     meta = {"name": entry.id, "description": entry.description}
     path.write_text(frontmatter.dumps(frontmatter.Post(body, **meta)), encoding="utf-8")
     return path
