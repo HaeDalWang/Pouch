@@ -18,11 +18,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pouch.catalog.model import ToolEntry
+from pouch.evolution.aggregate import UsageStat
 from pouch.evolution.pool import PoolEntry, build_pool
 
 _DEFAULT_LIMIT = 5
 _DEFAULT_SIMILAR_PER_ANCHOR = 3
 _DEFAULT_MIN_OVERLAP = 2  # 설명 토큰은 시끄러워 최소 2개 겹침을 요구(노이즈 방어)
+_DEFAULT_ANCHOR_MIN_COUNT = 2  # 반복이 증거 — 1회는 우연일 수 있다
+
+
+def frequent_tool_ids(
+    stats: dict[str, UsageStat], *, min_count: int = _DEFAULT_ANCHOR_MIN_COUNT
+) -> list[str]:
+    """반복해서 쓰는 도구 id — '이거 써봐'의 기준 도구(순수).
+
+    기준 넓히기(배승도 락 2026-07-22): 전에는 attach 후보(썼는데 표면에 없는 것)를
+    기준으로 삼았는데, 쓰려면 표면에 있어야 하니 구조적으로 공집합이었다 — 기능을
+    만들어놓고 한 번도 안 떴다. 기준은 그냥 "반복해서 쓰는 것"이다. 표면에 있든
+    없든 상관없다(잘 쓰는 도구야말로 취향의 실증).
+
+    stats는 canonicalize를 거친 것을 받는다(별칭이 접혀야 같은 도구가 안 흩어진다).
+    많이 쓴 순, 같으면 id 순(결정적).
+    """
+    habitual = [(s.count, eid) for eid, s in stats.items() if s.count >= min_count]
+    return [eid for _, eid in sorted(habitual, key=lambda t: (-t[0], t[1]))]
 
 
 @dataclass(frozen=True)

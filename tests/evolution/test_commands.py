@@ -252,7 +252,8 @@ def test_contract7d_dry_run_advises_on_plugin_usage(tmp_path: Path, monkeypatch)
 
 
 def test_contract7c_dry_run_shows_similar_for_repeated_anchor(tmp_path: Path, monkeypatch) -> None:
-    # 조각 3('이거 써봐'): reattach 앵커가 뜰 때 같은 태그의 비슷한 후보도 함께.
+    # '이거 써봐': 반복해서 쓰는 도구 곁에 같은 태그의 비슷한 후보도 함께.
+    # (기준 넓히기 2026-07-22: attach 신호가 아니라 반복 사용 — 2회 이상이 습관)
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))
     from datetime import datetime, timedelta
 
@@ -278,10 +279,11 @@ def test_contract7c_dry_run_shows_similar_for_repeated_anchor(tmp_path: Path, mo
         )
         store.save(entry)
 
-    # terraform만 설치했다 내리고 최근 다시 씀 → reattach 앵커. pulumi는 카탈로그만(비슷).
+    # terraform만 설치했다 내리고 최근 반복해 씀 → 잘 쓰는 기준. pulumi는 카탈로그만(비슷).
     install_entry(store.get("terraform"), skills_dir=skills_dir, mcp_config_path=mcp_config)
     apply_drop("terraform", store=store, skills_dir=skills_dir, mcp_config_path=mcp_config)
     fresh = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
     append_event(UsageEvent(entry_id="terraform", ts=fresh))
 
     result = runner.invoke(
@@ -293,6 +295,52 @@ def test_contract7c_dry_run_shows_similar_for_repeated_anchor(tmp_path: Path, mo
     # 앵커 곁에 비슷한 후보(pulumi)가 함께 뜬다 — "이거 써봐"
     assert "pulumi" in result.output
     assert "비슷" in result.output
+
+
+def test_try_this_shows_even_when_nothing_else_moves(tmp_path: Path, monkeypatch) -> None:
+    # 핵심 시나리오(2026-07-22): 도구를 잘 쓰고 있으면(표면에 있고 최근 반복 사용)
+    # 오르내릴 게 하나도 없다 — 옛 코드는 여기서 "오르내릴 것이 없습니다"로 끝나
+    # '이거 써봐'가 구조적으로 한 번도 안 떴다. 잘 쓰고 있을 때가 오히려 적기다.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from datetime import datetime, timedelta
+
+    from pouch.catalog.install import install_entry
+    from pouch.catalog.model import ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.usage_log import UsageEvent, append_event
+
+    store = CatalogStore()
+    skills_dir = tmp_path / "skills"
+    mcp_config = tmp_path / ".mcp.json"
+
+    # terraform은 카탈로그+표면(active)+최근 반복 사용 — 대기실에 비슷한 pulumi
+    up = tmp_path / "up" / "SKILL.md"
+    up.parent.mkdir(parents=True)
+    up.write_text("---\nname: terraform\ndescription: d\n---\n\n본문", encoding="utf-8")
+    store.save(ToolEntry.vendored(
+        id="terraform", kind=ToolKind.SKILL, source="s", title="terraform",
+        description="terraform infrastructure deploy cloud", upstream=str(up),
+        synced_at="2026-01-01",
+    ))
+    sources = CatalogStore(catalog_dir=tmp_path / "sources")
+    sources.save(ToolEntry.owned(
+        id="pulumi", kind=ToolKind.SKILL, source="s", title="pulumi",
+        description="pulumi infrastructure deploy cloud", body="본문",
+    ))
+    monkeypatch.setattr("pouch.paths.sources_dir", lambda: tmp_path / "sources")
+    install_entry(store.get("terraform"), skills_dir=skills_dir, mcp_config_path=mcp_config)
+    fresh = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
+
+    result = runner.invoke(
+        app,
+        ["evolve", "--skills-dir", str(skills_dir), "--mcp-config", str(mcp_config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "오르내릴 것이 없습니다" not in result.output
+    assert "pulumi" in result.output  # 대기실(소스)에서 온 후보
 
 
 def test_contract7b_dry_run_does_not_compact_log(tmp_path: Path, monkeypatch) -> None:

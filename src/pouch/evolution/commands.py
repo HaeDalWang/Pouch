@@ -37,11 +37,12 @@ from pouch.evolution.orchestrate import (
     plan_attach,
     plan_evolution,
     plan_plugin_advice,
+    plan_try_this_from_usage,
     reconcile,
     run_compaction,
 )
 from pouch.evolution.preview import preview_attach, preview_drop
-from pouch.evolution.similar import plan_try_this
+from pouch.evolution.similar import TryThis
 from pouch.evolution.state import active_entries
 from pouch.evolution.tracker import record_usage
 from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
@@ -148,16 +149,18 @@ def evolve(
     advice = plan_plugin_advice(now=now, store=store, config=EvolveConfig())
     pending = plan_memory_pending(memory_store)
     hygiene = plan_memory_hygiene(memory_store, now=datetime.now().date())
-    if not drops and not attaches and not advice and not pending and not hygiene:
+    active_ids = set(active_entries())  # '이거 써봐'가 이미 켠 것을 다시 안 권하게
+    # '이거 써봐' — 잘 쓰는 도구 기준, 카탈로그+대기실 풀(락 2026-07-22).
+    try_plans = plan_try_this_from_usage(store=store, active_ids=active_ids)
+    if (
+        not drops and not attaches and not advice
+        and not pending and not hygiene and not try_plans
+    ):
         console.print("🌊 오르내릴 것이 없습니다. 주머니가 손에 맞게 유지되고 있어요.")
         return
 
-    active_ids = set(active_entries())  # '이거 써봐'가 이미 켠 것을 다시 안 권하게
-
     if dry_run:
-        _preview_plan(
-            drops, attaches, advice, pending, hygiene, store=store, active_ids=active_ids
-        )
+        _preview_plan(drops, attaches, advice, pending, hygiene, try_plans=try_plans)
         return
 
     if drops:
@@ -169,8 +172,11 @@ def evolve(
         _propose_attaches(
             attaches, yes=yes, store=store,
             skills_dir=target_skills, mcp_config_path=target_mcp,
-            active_ids=active_ids, advice=advice,
+            advice=advice, try_plans=try_plans,
         )
+    elif try_plans:
+        # 오르내릴 건 없어도 '이거 써봐'는 뜬다 — 잘 쓰고 있을 때가 오히려 적기.
+        _render_try_this(try_plans)
     if pending:
         _propose_memory_pending(pending, yes=yes, store=memory_store)
     if hygiene:
@@ -206,8 +212,7 @@ def _preview_plan(
     pending: list[MemoryEntry],
     hygiene: list[HygieneCandidate],
     *,
-    store: CatalogStore,
-    active_ids: set[str],
+    try_plans: list[TryThis],
 ) -> None:
     """읽기전용 목록 — 항목마다 효과+되돌림(preview 단일 출처). 실행·물음 없음.
 
@@ -244,8 +249,8 @@ def _preview_plan(
         console.print(f"  ▽ [cyan]{cand.name}[/cyan] 기억 정리 — {cand.detail}")
         console.print("     인덱스에서 내립니다(파일은 남음, recall로 되찾음).")
 
-    # '이거 써봐' — 반복 앵커 곁에 비슷한 후보도(읽기전용이라 여기서도 안전).
-    _render_try_this(attaches, store=store, active_ids=active_ids)
+    # '이거 써봐' — 잘 쓰는 도구 곁에 비슷한 후보도(읽기전용이라 여기서도 안전).
+    _render_try_this(try_plans)
 
     console.print(
         "\n실행하려면: [cyan]pouch evolve --yes[/cyan] "
@@ -253,17 +258,23 @@ def _preview_plan(
     )
 
 
-def _render_try_this(
-    attaches: list[AttachCandidate], *, store: CatalogStore, active_ids: set[str]
-) -> None:
-    """반복 앵커 곁에 '비슷한 후보도 이거'를 붙여 보여준다('이거 써봐' 조각 3).
+_DESC_CLIP = 90  # 후보 설명은 첫 숨까지만 — SKILL.md 설명 전문은 화면을 뒤덮는다
 
-    앵커 = 반복 신호(reattach·adopt)의 도구 — 새 발견 로직 아님, 있는 신호 재사용.
-    비슷함은 태그 겹침으로만(지어내기 없음), 왜 비슷한지(겹친 태그)를 함께 보여준다.
-    붙일 게 없으면(날것 예외·겹침 0) 조용히 아무것도 안 그린다(소음 0).
+
+def _clip(text: str, limit: int = _DESC_CLIP) -> str:
+    """설명을 한 줄 요약 길이로 자른다(대기실 후보 설명은 수백 자짜리도 있다)."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def _render_try_this(plans: list[TryThis]) -> None:
+    """잘 쓰는 도구 곁에 '비슷한 후보도 이거'를 붙여 보여준다('이거 써봐').
+
+    기준·풀 넓히기(배승도 락 2026-07-22)로 계산은 plan_try_this_from_usage가 한다 —
+    기준은 반복 사용 통계, 풀은 카탈로그+대기실(소스). 비슷함은 토큰 겹침으로만
+    (지어내기 없음), 왜 비슷한지(겹친 토큰)를 함께 보여준다. 붙일 게 없으면
+    조용히 아무것도 안 그린다(소음 0). 안내만 — 설치는 사용자가 고른다.
     """
-    anchor_ids = [c.entry_id for c in attaches if c.kind in ("reattach", "adopt")]
-    plans = plan_try_this(anchor_ids, list(store.list()), active_ids=active_ids)
     if not plans:
         return
 
@@ -273,9 +284,13 @@ def _render_try_this(
         for cand in plan.similar:
             shared = ", ".join(sorted(cand.shared_tokens))
             console.print(
-                f"    • [cyan]{cand.entry.id}[/cyan] — {cand.entry.description}"
+                f"    • [cyan]{cand.entry.id}[/cyan] — {_clip(cand.entry.description)}"
                 f" [dim](비슷한 점: {shared})[/dim]"
             )
+    console.print(
+        "  [dim]써보려면: [cyan]pouch catalog install <이름>[/cyan]"
+        " (대기실 것은 이때 카탈로그로 들어옵니다)[/dim]"
+    )
 
 
 def _propose_drops(
@@ -344,8 +359,8 @@ def _propose_attaches(
     store: CatalogStore,
     skills_dir: Path,
     mcp_config_path: Path,
-    active_ids: set[str],
     advice: list[Advice],
+    try_plans: list[TryThis],
 ) -> None:
     """당겨올 후보를 보여준다 — reattach는 동의 시 실행, adopt는 안내만.
 
@@ -368,8 +383,8 @@ def _propose_attaches(
     # plugin 관측 사용 → 조언(행위 아님, 소유자에게 안내만).
     _render_advice(advice)
 
-    # '이거 써봐' — 반복 앵커 곁에 비슷한 후보도(안내만, 실행 아님).
-    _render_try_this(candidates, store=store, active_ids=active_ids)
+    # '이거 써봐' — 잘 쓰는 도구 곁에 비슷한 후보도(안내만, 실행 아님).
+    _render_try_this(try_plans)
 
     if not reattaches:
         return

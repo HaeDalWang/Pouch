@@ -30,9 +30,16 @@ from pouch.evolution.candidates import (
 )
 from pouch.evolution.compaction import compact, full_stats
 from pouch.evolution.reconcile import demote_candidates, promote_candidates
+from pouch.evolution.similar import TryThis, frequent_tool_ids, plan_try_this
 from pouch.evolution.state import active_entries, mark_dropped
 from pouch.evolution.summary import load_summary, save_summary
 from pouch.evolution.usage_log import read_events, rewrite_events
+
+# '이거 써봐' 화면 캡 — 보여줄 게 있는 기준 도구 상위 몇 개까지(잔소리 방어).
+# 입구(기준 선정)가 아니라 출구(렌더)에 건다: 조용한 기준(비슷한 게 없는 것)은
+# 자릿수를 안 먹으므로, 캡을 입구에 걸면 조용한 것들이 자리를 다 차지해
+# 정작 보여줄 게 있는 기준이 밀려나는 역전이 생긴다.
+_TRY_THIS_MAX_ANCHORS = 3
 
 
 def plan_evolution(
@@ -96,6 +103,53 @@ def plan_attach(
         alias_map=alias_map(entries),
         plugin_surfaced={e.id for e in entries if e.surface == SURFACE_PLUGIN},
     )
+
+
+def plan_try_this_from_usage(
+    *,
+    store: CatalogStore,
+    source_store: CatalogStore | None = None,
+    usage_path: Path | None = None,
+    summary_path: Path | None = None,
+    state_path: Path | None = None,
+    active_ids: set[str] | None = None,
+    max_anchors: int = _TRY_THIS_MAX_ANCHORS,
+) -> list[TryThis]:
+    """잘 쓰는 도구를 기준으로 카탈로그+대기실(소스)에서 비슷한 후보를 계산한다.
+
+    '이거 써봐' 넓히기(배승도 락 2026-07-22): "472개는 잘쓰는도구 항목이 아니라
+    애초에 비교하기 위한 대상군 항목에 넣는다 … 기존에는 플레이리스트에서만
+    가져왔는데 전체 음원 중에서 찾도록". 두 겹을 함께 편다:
+
+      기준(①) — attach 후보(썼는데 표면에 없는 것)가 아니라 반복 사용 통계.
+        옛 조건은 구조적 공집합이었다(쓰려면 표면에 있어야 하니까).
+      풀(②) — 카탈로그 + 소스 대기실. 대기실도 sweep이 실측한 "이미 깔린 것"이라
+        지어내기 금지 원칙 안이다(바깥 마켓은 여전히 raft 뒤). 같은 id가 양쪽에
+        있으면 카탈로그가 이긴다(개인화 태그가 붙는 쪽).
+
+    제안만 — 아무것도 설치·진입시키지 않는다. 통계는 요약+최근을 합쳐(습관 보존)
+    canonicalize를 거친다(별칭이 접혀야 같은 도구가 안 흩어진다).
+    """
+    events = read_events(log_path=usage_path)
+    summary = load_summary(path=summary_path)
+    entries = list(store.list())
+    stats = canonicalize_stats(full_stats(summary, events), alias_map(entries))
+    anchors = frequent_tool_ids(stats)
+    if not anchors:
+        return []
+
+    sources = source_store or CatalogStore(catalog_dir=_sources_dir())
+    catalog_ids = {e.id for e in entries}
+    staged = [e for e in sources.list() if e.id not in catalog_ids]
+    active = active_ids if active_ids is not None else set(active_entries(state_path=state_path))
+    plans = plan_try_this(anchors, entries + staged, active_ids=active)
+    return plans[:max_anchors]
+
+
+def _sources_dir() -> Path:
+    from pouch import paths
+
+    return paths.sources_dir()
 
 
 def plan_plugin_advice(
