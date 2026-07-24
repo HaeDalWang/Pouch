@@ -343,6 +343,55 @@ def test_try_this_shows_even_when_nothing_else_moves(tmp_path: Path, monkeypatch
     assert "pulumi" in result.output  # 대기실(소스)에서 온 후보
 
 
+def test_try_this_shows_repo_candidates_with_provenance(tmp_path: Path, monkeypatch) -> None:
+    # 조각 ③ — 저장소 색인이 풀에 합류하고, 화면에 출처("저장소가 담고 있음")가 남는다.
+    monkeypatch.setenv("POUCH_HOME", str(tmp_path))
+    from datetime import datetime, timedelta
+
+    from pouch import paths
+    from pouch.catalog.install import install_entry
+    from pouch.catalog.model import ToolEntry, ToolKind
+    from pouch.catalog.store import CatalogStore
+    from pouch.evolution.usage_log import UsageEvent, append_event
+    from pouch.repos.index import index_repo
+
+    store = CatalogStore()
+    skills_dir = tmp_path / "skills"
+    mcp_config = tmp_path / ".mcp.json"
+
+    up = tmp_path / "up" / "SKILL.md"
+    up.parent.mkdir(parents=True)
+    up.write_text("---\nname: terraform\ndescription: d\n---\n\n본문", encoding="utf-8")
+    store.save(ToolEntry.vendored(
+        id="terraform", kind=ToolKind.SKILL, source="s", title="terraform",
+        description="terraform infrastructure deploy cloud", upstream=str(up),
+        synced_at="2026-01-01",
+    ))
+    clone = tmp_path / "clone"
+    d = clone / "skills" / "pulumi"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(
+        "---\nname: pulumi\ndescription: pulumi infrastructure deploy cloud\n---\n\n#\n",
+        encoding="utf-8",
+    )
+    index_repo("team", clone, index_dir=paths.repo_index_root() / "team", synced_at="s")
+    install_entry(store.get("terraform"), skills_dir=skills_dir, mcp_config_path=mcp_config)
+    fresh = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
+    append_event(UsageEvent(entry_id="terraform", ts=fresh))
+
+    result = runner.invoke(
+        app,
+        ["evolve", "--dry-run", "--skills-dir", str(skills_dir), "--mcp-config", str(mcp_config)],
+    )
+
+    flat = result.output.replace("\n", "")
+    assert result.exit_code == 0, result.output
+    assert "team/pulumi" in flat
+    assert "저장소가 담고 있음" in flat
+    assert "pouch repo search" in flat  # 실재하는 입구 안내
+
+
 def test_contract7b_dry_run_does_not_compact_log(tmp_path: Path, monkeypatch) -> None:
     # dry-run은 읽기전용 — 오래된 사용 로그도 접지 않는다(mutation 금지)
     monkeypatch.setenv("POUCH_HOME", str(tmp_path))

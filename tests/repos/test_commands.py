@@ -105,6 +105,33 @@ def test_remove_also_drops_the_index(home: Path, monkeypatch) -> None:
     assert not (paths.repo_index_root() / "team").exists()
 
 
+def test_search_finds_indexed_tools_with_repo_scoped_names(home: Path) -> None:
+    """조각 ③ — 빈손 입구. 검색 결과의 정체에 출처(저장소)가 실려 있다."""
+    origin = _make_origin(home / "origin")
+    runner.invoke(app, ["repo", "add", "team", str(origin)])
+
+    result = runner.invoke(app, ["repo", "search", "deploy"])
+
+    assert result.exit_code == 0, result.output
+    assert "team/deploy-helper" in result.output.replace("\n", "")
+
+
+def test_search_without_repos_points_to_the_add_door(home: Path) -> None:
+    result = runner.invoke(app, ["repo", "search", "anything"])
+
+    assert result.exit_code == 0
+    assert "pouch repo add" in result.output.replace("\n", "")
+
+
+def test_search_miss_is_honest(home: Path) -> None:
+    origin = _make_origin(home / "origin")
+    runner.invoke(app, ["repo", "add", "team", str(origin)])
+
+    result = runner.invoke(app, ["repo", "search", "zzz-nothing"])
+
+    assert "없습니다" in result.output
+
+
 def test_remove_round_trips(home: Path) -> None:
     origin = _make_origin(home / "origin")
     runner.invoke(app, ["repo", "add", "team", str(origin)])

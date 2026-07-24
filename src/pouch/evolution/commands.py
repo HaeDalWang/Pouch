@@ -49,6 +49,7 @@ from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
 from pouch.memory.hygiene import HygieneCandidate
 from pouch.memory.model import MemoryEntry
 from pouch.memory.store import MemoryStore
+from pouch.textview import clip as _clip
 
 app = typer.Typer(
     help="🌊 evolve — 쓸수록 손에 맞게. 안 쓰는 건 정리 제안.",
@@ -258,39 +259,45 @@ def _preview_plan(
     )
 
 
-_DESC_CLIP = 90  # 후보 설명은 첫 숨까지만 — SKILL.md 설명 전문은 화면을 뒤덮는다
-
-
-def _clip(text: str, limit: int = _DESC_CLIP) -> str:
-    """설명을 한 줄 요약 길이로 자른다(대기실 후보 설명은 수백 자짜리도 있다)."""
-    flat = " ".join(text.split())
-    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
-
-
 def _render_try_this(plans: list[TryThis]) -> None:
     """잘 쓰는 도구 곁에 '비슷한 후보도 이거'를 붙여 보여준다('이거 써봐').
 
     기준·풀 넓히기(배승도 락 2026-07-22)로 계산은 plan_try_this_from_usage가 한다 —
-    기준은 반복 사용 통계, 풀은 카탈로그+대기실(소스). 비슷함은 토큰 겹침으로만
-    (지어내기 없음), 왜 비슷한지(겹친 토큰)를 함께 보여준다. 붙일 게 없으면
+    기준은 반복 사용 통계, 풀은 카탈로그+대기실(소스)+저장소 색인(조각 ③). 비슷함은
+    토큰 겹침으로만(지어내기 없음), 왜 비슷한지(겹친 토큰)를 함께 보여준다. 저장소
+    후보는 출처("○○ 저장소가 담고 있음")를 반드시 함께 낸다 — pouch가 고른 게
+    아니라 사람이 만든 저장소의 전달이라는 게 화면에 남아야 한다. 붙일 게 없으면
     조용히 아무것도 안 그린다(소음 0). 안내만 — 설치는 사용자가 고른다.
     """
     if not plans:
         return
 
     console.print("\n💡 [bold]이거 써봐[/bold] (자주 쓰시는 것과 비슷한 것들)\n")
+    has_local = has_repo = False
     for plan in plans:
         console.print(f"  [dim]{plan.anchor_id}와 비슷:[/dim]")
         for cand in plan.similar:
-            shared = ", ".join(sorted(cand.shared_tokens))
+            notes = [f"비슷한 점: {', '.join(sorted(cand.shared_tokens))}"]
+            repo_name, _, _ = cand.entry.id.partition("/")
+            if "/" in cand.entry.id:
+                has_repo = True
+                notes.append(f"{repo_name} 저장소가 담고 있음")
+            else:
+                has_local = True
             console.print(
                 f"    • [cyan]{cand.entry.id}[/cyan] — {_clip(cand.entry.description)}"
-                f" [dim](비슷한 점: {shared})[/dim]"
+                f" [dim]({' · '.join(notes)})[/dim]"
             )
-    console.print(
-        "  [dim]써보려면: [cyan]pouch catalog install <이름>[/cyan]"
-        " (대기실 것은 이때 카탈로그로 들어옵니다)[/dim]"
-    )
+    # 안내는 오늘 실재하는 명령만 — 없는 길을 지어내지 않는다(preview 정직성과 같은 결).
+    if has_local:
+        console.print(
+            "  [dim]써보려면: [cyan]pouch catalog install <이름>[/cyan]"
+            " (대기실 것은 이때 카탈로그로 들어옵니다)[/dim]"
+        )
+    if has_repo:
+        console.print(
+            "  [dim]저장소 후보 살펴보기: [cyan]pouch repo search <말>[/cyan][/dim]"
+        )
 
 
 def _propose_drops(

@@ -109,6 +109,7 @@ def plan_try_this_from_usage(
     *,
     store: CatalogStore,
     source_store: CatalogStore | None = None,
+    repo_index_root: Path | None = None,
     usage_path: Path | None = None,
     summary_path: Path | None = None,
     state_path: Path | None = None,
@@ -141,8 +142,21 @@ def plan_try_this_from_usage(
     sources = source_store or CatalogStore(catalog_dir=_sources_dir())
     catalog_ids = {e.id for e in entries}
     staged = [e for e in sources.list() if e.id not in catalog_ids]
+
+    # 풀의 다음 겹(조각 ③): 등록한 저장소의 색인. 정체가 `<저장소>/<도구>`라 출처가
+    # 이름에 실려 다닌다. 이미 아는 도구(카탈로그·대기실)의 저장소 사본은 뺀다 —
+    # 같은 걸 두 번 권하는 소음 방지(카탈로그가 이기는 기존 원칙의 연장).
+    from pouch.repos.index import indexed_entries
+
+    known = catalog_ids | {e.id for e in staged}
+    from_repos = [
+        e
+        for e in indexed_entries(repo_index_root or _repo_index_root())
+        if e.id.split("/", 1)[1] not in known
+    ]
+
     active = active_ids if active_ids is not None else set(active_entries(state_path=state_path))
-    plans = plan_try_this(anchors, entries + staged, active_ids=active)
+    plans = plan_try_this(anchors, entries + staged + from_repos, active_ids=active)
     return plans[:max_anchors]
 
 
@@ -150,6 +164,12 @@ def _sources_dir() -> Path:
     from pouch import paths
 
     return paths.sources_dir()
+
+
+def _repo_index_root() -> Path:
+    from pouch import paths
+
+    return paths.repo_index_root()
 
 
 def plan_plugin_advice(

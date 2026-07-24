@@ -10,8 +10,9 @@ import typer
 from rich.console import Console
 
 from pouch import paths
-from pouch.repos.index import index_repo, indexed_count
+from pouch.repos.index import index_repo, indexed_count, search_index
 from pouch.repos.manage import RepoError, add_repo, list_repos, remove_repo
+from pouch.textview import clip
 
 app = typer.Typer(
     help="🗄️ repo — 도구 저장소 주소를 물어둔다 (helm repo처럼).",
@@ -77,6 +78,38 @@ def list_() -> None:
         count = indexed_count(paths.repo_index_root() / repo.name)
         console.print(
             f"  • [cyan]{repo.name}[/cyan] — 도구 {count}개 ← {repo.url or '?'}"
+        )
+
+
+@app.command("search")
+def search(
+    query: str = typer.Argument(
+        "", help="찾을 말(이름·제목·설명에서 부분 일치). 비우면 전부."
+    ),
+) -> None:
+    """등록한 저장소들의 색인을 뒤진다 — helm search repo의 pouch판.
+
+    빈손이어도 쓸 수 있는 입구다: 근거는 사용 기록이 아니라 "이 저장소가 담고
+    있다"는 실재 사실뿐. 보기만 한다 — 설치·진입 없음.
+    """
+    hits = search_index(paths.repo_index_root(), query)
+    if not hits:
+        if not list_repos(repos_dir=paths.repos_dir()):
+            console.print(
+                "🗄️ 등록된 저장소가 없습니다 — 먼저 "
+                "[cyan]pouch repo add <이름> <git주소>[/cyan] 하세요."
+            )
+        elif query:
+            console.print(f"🔍 '{query}'에 걸리는 도구가 색인에 없습니다.")
+        else:
+            console.print("🔍 색인이 비어 있습니다 — 저장소에 아는 배치가 없었습니다.")
+        return
+    label = f"'{query}' 검색 결과" if query else "색인 전체"
+    console.print(f"🔍 [bold]{label}[/bold] ({len(hits)}개)\n")
+    for entry in hits:
+        console.print(
+            f"  • [cyan]{entry.id}[/cyan] ({entry.kind.value})"
+            f" — {clip(entry.description) or '설명 없음'}"
         )
 
 

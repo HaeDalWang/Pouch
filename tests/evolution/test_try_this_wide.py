@@ -112,6 +112,66 @@ def test_a_staged_copy_of_a_catalog_entry_does_not_double_up(tmp_path) -> None:
     assert ids.count("pulumi") == 1
 
 
+def test_repo_index_joins_the_pool_with_provenance_in_the_id(tmp_path) -> None:
+    """조각 ③ — 등록한 저장소의 색인이 풀의 다음 겹. 후보 정체에 출처가 실린다."""
+    from pouch.repos.index import index_repo
+
+    catalog = CatalogStore(catalog_dir=tmp_path / "catalog")
+    sources = CatalogStore(catalog_dir=tmp_path / "sources")
+    log = tmp_path / "usage.jsonl"
+    catalog.save(_skill("terraform", "terraform infrastructure deploy cloud"))
+    _use("terraform", 5, log)
+
+    clone = tmp_path / "clone"
+    d = clone / "skills" / "pulumi"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(
+        "---\nname: pulumi\ndescription: pulumi infrastructure deploy cloud\n---\n\n#\n",
+        encoding="utf-8",
+    )
+    index_root = tmp_path / "repo-index"
+    index_repo("team", clone, index_dir=index_root / "team", synced_at="s")
+
+    plans = plan_try_this_from_usage(
+        store=catalog, source_store=sources, repo_index_root=index_root,
+        usage_path=log, state_path=tmp_path / "state.json", active_ids={"terraform"},
+    )
+
+    ids = [c.entry.id for p in plans for c in p.similar]
+    assert "team/pulumi" in ids
+
+
+def test_a_repo_copy_of_a_known_tool_does_not_double_up(tmp_path) -> None:
+    """카탈로그·대기실이 이미 아는 도구는 저장소 겹에서 다시 안 나온다."""
+    from pouch.repos.index import index_repo
+
+    catalog = CatalogStore(catalog_dir=tmp_path / "catalog")
+    sources = CatalogStore(catalog_dir=tmp_path / "sources")
+    log = tmp_path / "usage.jsonl"
+    catalog.save(_skill("terraform", "terraform infrastructure deploy cloud"))
+    catalog.save(_skill("pulumi", "pulumi infrastructure deploy cloud"))
+    _use("terraform", 5, log)
+
+    clone = tmp_path / "clone"
+    d = clone / "skills" / "pulumi"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(
+        "---\nname: pulumi\ndescription: pulumi infrastructure deploy cloud\n---\n\n#\n",
+        encoding="utf-8",
+    )
+    index_root = tmp_path / "repo-index"
+    index_repo("team", clone, index_dir=index_root / "team", synced_at="s")
+
+    plans = plan_try_this_from_usage(
+        store=catalog, source_store=sources, repo_index_root=index_root,
+        usage_path=log, state_path=tmp_path / "state.json", active_ids=set(),
+    )
+
+    ids = [c.entry.id for p in plans for c in p.similar]
+    assert "pulumi" in ids  # 카탈로그 것이 이긴다
+    assert "team/pulumi" not in ids
+
+
 def test_noisy_screens_are_capped_to_a_few_anchors(tmp_path) -> None:
     """보여줄 게 있는 기준 도구가 많아도 상위 몇 개까지만(잔소리 방어).
 
