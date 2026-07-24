@@ -189,7 +189,14 @@ def export(
         )
         raise typer.Exit(code=1)
 
+    from pouch.repos.manage import list_repos
+
     store = CatalogStore()
+    # 저장소 출신 도구를 주소로 가리키려면 지금 등록된 저장소의 이름→주소가 필요하다
+    # (⑤). 등록돼 있어야 주소를 안다 — 안 물린 것은 export가 정직히 건너뛰고 보고한다.
+    repo_urls = {
+        repo.name: repo.url for repo in list_repos(repos_dir=paths.repos_dir()) if repo.url
+    }
     result = build_export_set(
         name,
         list(store.list()),
@@ -197,6 +204,7 @@ def export(
         home=Path.home(),
         title=title or None,
         description=description,
+        repo_urls=repo_urls,
     )
 
     if not result.starter.items:
@@ -221,6 +229,11 @@ def export(
     for item in result.starter.items:
         if item.embed is not None:
             console.print(f"  • [cyan]{item.embed.id}[/cyan] [dim](본문 실림)[/dim]")
+        elif item.repo is not None:
+            tools = ", ".join(item.repo.tools)
+            console.print(
+                f"  • [cyan]{tools}[/cyan] [dim]({item.repo.name} 저장소 주소로 가리킴)[/dim]"
+            )
         else:
             console.print(f"  • [cyan]{item.install[0]}[/cyan]")
     for reason in result.skipped:

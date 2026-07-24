@@ -26,8 +26,10 @@ from pouch.catalog.importer import (
 )
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
+from pouch.catalog.promote import promote_from_repo
 from pouch.catalog.store import CatalogStore
-from pouch.sets.model import EmbeddedTool, StarterSet, is_safe_set_name
+from pouch.gitio import clone_url_of, same_url
+from pouch.sets.model import EmbeddedTool, RepoRef, StarterSet, is_safe_set_name
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,64 @@ def _restore_embedded(
     return None
 
 
+def _apply_repo_ref(
+    ref: RepoRef,
+    store: CatalogStore,
+    *,
+    repos_dir: Path,
+    repo_index_root: Path,
+    skills_dir: Path,
+    mcp_config_path: Path,
+    settings_path: Path | None,
+    state_path: Path | None,
+) -> tuple[list[str], list[str]]:
+    """저장소 참조 항목을 적용한다 — (올린 것, 건너뛴 이유들). Phase 4.8 ⑤.
+
+    저장소가 **등록돼 있어야만** 설치한다. 세트가 저장소를 대신 등록하지 않는다 —
+    등록은 신뢰 표명이라 사람 몫이고, 안 물렸으면 등록 명령을 안내하고 건너뛴다
+    (인질 금지). 같은 이름이 딴 주소로 등록돼 있으면 조용히 그걸로 설치하지 않는다.
+    """
+    registered_url = clone_url_of(repos_dir / ref.name)
+    if registered_url is None:
+        return [], [
+            f"저장소 '{ref.name}'이 등록돼 있지 않아 도구 {len(ref.tools)}개 건너뜀"
+            f" — 등록: pouch repo add {ref.name} {ref.url}"
+        ]
+    if not same_url(registered_url, ref.url):
+        return [], [
+            f"저장소 '{ref.name}'이 다른 주소로 등록돼 있어 건너뜀"
+            f"(세트: {ref.url} / 내 것: {registered_url})"
+        ]
+
+    installed: list[str] = []
+    skipped: list[str] = []
+    for tool_id in ref.tools:
+        scoped = f"{ref.name}/{tool_id}"
+        try:
+            entry = promote_from_repo(
+                scoped, index_root=repo_index_root, catalog_store=store
+            )
+        except ValueError as exc:
+            skipped.append(str(exc))
+            continue
+        if entry is None:
+            skipped.append(
+                f"'{scoped}'가 색인에 없음 — pouch repo add {ref.name} {ref.url}로 "
+                "갱신 후 다시 적용하세요"
+            )
+            continue
+        try:
+            install_entry(
+                entry, skills_dir=skills_dir, mcp_config_path=mcp_config_path,
+                settings_path=settings_path, state_path=state_path,
+            )
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            skipped.append(f"'{scoped}' 설치 실패: {exc}")
+            continue
+        installed.append(entry.id)
+    return installed, skipped
+
+
 def apply_set(
     starter: StarterSet,
     store: CatalogStore,
@@ -116,13 +176,30 @@ def apply_set(
     settings_path: Path | None = None,
     state_path: Path | None = None,
     synced_at: str,
+    repos_dir: Path | None = None,
+    repo_index_root: Path | None = None,
 ) -> SetApplyReport:
     """세트의 항목들을 가져오고(창고), install 목록만 표면(연장통)에 올린다."""
+    from pouch import paths
+
     imported = 0
     installed: list[str] = []
     skipped: list[str] = []
 
     for item in starter.items:
+        if item.repo is not None:
+            repo_installed, repo_skipped = _apply_repo_ref(
+                item.repo, store,
+                repos_dir=repos_dir or paths.repos_dir(),
+                repo_index_root=repo_index_root or paths.repo_index_root(),
+                skills_dir=skills_dir, mcp_config_path=mcp_config_path,
+                settings_path=settings_path, state_path=state_path,
+            )
+            imported += len(repo_installed)  # 진입(카탈로그)도 설치와 함께 일어난다
+            installed.extend(repo_installed)
+            skipped.extend(repo_skipped)
+            continue
+
         if item.embed is not None:
             outcome = _restore_embedded(
                 item.embed, store,

@@ -37,6 +37,23 @@ def run_git(args: list[str], *, cwd: Path | None = None) -> str:
     return result.stdout.strip()
 
 
+def canonical_url(url: str) -> str:
+    """로컬 경로 주소는 절대경로로 편다(원격 URL은 그대로).
+
+    git이 remote에 적어두는 로컬 경로는 절대경로 꼴이라, 상대경로(`./origin`)와
+    문자열로 비교하면 같은 주소를 다르다고 오판한다. 주소 비교는 항상 이 형으로.
+    """
+    path = Path(url).expanduser()
+    if path.exists():
+        return str(path.resolve())
+    return url
+
+
+def same_url(a: str, b: str) -> bool:
+    """두 git 주소가 같은 곳을 가리키나 — canonical 형으로 비교."""
+    return canonical_url(a) == canonical_url(b)
+
+
 def clone_url_of(clone_dir: Path) -> str | None:
     """클론의 origin 원격 URL. 클론이 아니면 None."""
     if not (clone_dir / ".git").exists():

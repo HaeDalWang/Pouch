@@ -269,6 +269,36 @@ def test_set_export_embeds_owned_and_prints_it(tmp_path: Path, _no_builtin) -> N
     assert "올릴 것 1개" in listed.stdout
 
 
+def test_set_export_points_at_repo_and_does_not_crash(tmp_path: Path, _no_builtin) -> None:
+    # 저장소 출신 도구를 export — 주소로 가리키는 repo 항목이 담기고, 보고 줄이
+    # 안 넘어진다(embed와 같은 회귀: repo 항목엔 item.install[0]이 없다).
+    import subprocess
+
+    origin = tmp_path / "origin"
+    (origin / "skills" / "deploy-helper").mkdir(parents=True)
+    (origin / "skills" / "deploy-helper" / "SKILL.md").write_text(
+        "---\nname: deploy-helper\ndescription: deploy tool\n---\n# 본문", encoding="utf-8"
+    )
+    for args in (
+        ["git", "init", "-q"], ["git", "config", "user.email", "t@t"],
+        ["git", "config", "user.name", "T"], ["git", "config", "commit.gpgsign", "false"],
+        ["git", "add", "-A"], ["git", "commit", "-q", "-m", "init"],
+    ):
+        subprocess.run(args, cwd=origin, check=True, capture_output=True)
+
+    assert runner.invoke(app, ["repo", "add", "team", str(origin)]).exit_code == 0
+    assert runner.invoke(app, ["catalog", "install", "team/deploy-helper"]).exit_code == 0
+
+    result = runner.invoke(app, ["set", "export", "team-set", "--yes"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "저장소 주소로 가리킴" in result.stdout
+    data = json.loads((paths.sets_dir() / "team-set.json").read_text(encoding="utf-8"))
+    repo_item = data["items"][0]["repo"]
+    assert repo_item["name"] == "team"
+    assert repo_item["tools"] == ["deploy-helper"]
+
+
 def test_set_import_embed_set_without_bogus_missing_source(tmp_path: Path, _no_builtin) -> None:
     # embed 항목은 출처(source)가 없다 — "출처가 이 컴퓨터에 없다" 경고 대상이 아니다.
     gift = tmp_path / "gift.json"

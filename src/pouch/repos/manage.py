@@ -20,7 +20,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from pouch.gitio import GitError, clone_url_of, run_git
+from pouch.gitio import GitError, canonical_url, clone_url_of, run_git
 
 
 class RepoError(Exception):
@@ -49,17 +49,8 @@ def _require_safe_name(name: str) -> None:
         )
 
 
-def _canonical_url(url: str) -> str:
-    """로컬 경로 주소는 절대경로로 편다(원격 URL은 그대로).
-
-    git이 remote에 적어두는 로컬 경로는 절대경로 꼴이라, 사용자가 준 상대경로
-    (`./origin`)와 문자열로 비교하면 같은 주소를 다르다고 오판한다 — 멱등 재등록이
-    깨지는 실측 버그. 등록·비교 모두 이 canonical 형으로 통일한다.
-    """
-    path = Path(url).expanduser()
-    if path.exists():
-        return str(path.resolve())
-    return url
+# 주소 비교는 canonical 형으로(gitio) — 상대경로 재등록이 멱등을 깨던 실측 버그의 방어.
+_canonical_url = canonical_url
 
 
 def add_repo(name: str, url: str, *, repos_dir: Path) -> RepoInfo:

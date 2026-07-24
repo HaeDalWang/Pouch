@@ -34,7 +34,9 @@ from pathlib import Path
 
 from pouch.catalog.model import SURFACE_PLUGIN, Ownership, ToolEntry, ToolKind
 from pouch.evolution.pool import build_pool
-from pouch.sets.model import EmbeddedTool, SetItem, StarterSet
+from pouch.sets.model import EmbeddedTool, RepoRef, SetItem, StarterSet
+
+_REPO_SOURCE_PREFIX = "repo:"  # promote_from_repo가 찍는 출신 도장
 
 _MATCH_TOKEN_CAP = 20  # 매칭 토큰은 몇 개면 충분 — 전량은 시끄럽다
 
@@ -72,16 +74,19 @@ def build_export_set(
     home: Path,
     title: str | None = None,
     description: str = "",
+    repo_urls: dict[str, str] | None = None,
 ) -> ExportResult:
     """표면(active)에 올린 것 중 재설치 가능한 것을 세트로 굳힌다(순수).
 
-    담을 수 있는 건 재import 출처(upstream)가 있는 것뿐 — owned·연결형·플러그인
-    관리 표면은 v0에서 출처가 없어 건너뛰고 이유를 보고한다.
+    담을 수 있는 건 재import 출처(upstream)가 있는 것 + 저장소 출신(⑤: 몸통 대신
+    주소로 가리킴 — `repo_urls`는 등록된 저장소 이름→주소, 호출부가 IO로 채움).
+    owned가 아니면서 출처도 저장소 출신도 아닌 것은 건너뛰고 이유를 보고한다.
     """
     by_id = {entry.id: entry for entry in entries}
     items: list[SetItem] = []
     exported: list[ToolEntry] = []
     skipped: list[str] = []
+    repo_tools: dict[str, list[str]] = {}  # 저장소 이름 → 담을 도구들(참조 하나로 묶음)
 
     for entry_id in sorted(active_ids):
         entry = by_id.get(entry_id)
@@ -89,6 +94,19 @@ def build_export_set(
             continue  # 표면에 있는데 카탈로그에 없음 — 있을 수 없지만 방어적으로 무시
         if entry.surface == SURFACE_PLUGIN:
             skipped.append(f"'{entry_id}'는 플러그인이 표면을 관리해 세트에 안 담음(관측만)")
+            continue
+        if entry.source.startswith(_REPO_SOURCE_PREFIX):
+            # 저장소 출신 — 경로가 아니라 저장소 참조로 굳는다(받는 컴퓨터에
+            # 내 클론 경로는 없다). 주소는 지금 등록돼 있어야 안다(지어내기 금지).
+            repo_name = entry.source.removeprefix(_REPO_SOURCE_PREFIX)
+            if repo_name not in (repo_urls or {}):
+                skipped.append(
+                    f"'{entry_id}'는 저장소 '{repo_name}' 출신인데 그 저장소가 지금 "
+                    f"등록돼 있지 않아 주소를 모름 — pouch repo add 후 다시 내보내세요"
+                )
+                continue
+            repo_tools.setdefault(repo_name, []).append(entry_id)
+            exported.append(entry)
             continue
         if entry.ownership is Ownership.OWNED:
             # 직접 만든 도구는 출처가 없으니 본문을 통째로 싣는다(인라인 임베드,
@@ -114,6 +132,13 @@ def build_export_set(
             continue
         items.append(SetItem(source=_homeify(entry.upstream, home), install=(entry_id,)))
         exported.append(entry)
+
+    for repo_name in sorted(repo_tools):
+        items.append(SetItem(repo=RepoRef(
+            name=repo_name,
+            url=(repo_urls or {})[repo_name],
+            tools=tuple(repo_tools[repo_name]),
+        )))
 
     starter = StarterSet(
         name=name,

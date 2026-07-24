@@ -58,20 +58,49 @@ class EmbeddedTool:
 
 
 @dataclass(frozen=True)
-class SetItem:
-    """세트의 한 항목: 참조(source→install) 또는 임베드(embed) 중 하나.
+class RepoRef:
+    """저장소 참조 — 몸통 대신 주소를 싣는다 (Phase 4.8 ⑤, 배승도 락 2026-07-24).
 
-    참조는 "어디서 가져올지"만 가리키고, 임베드는 본문을 통째로 품는다
-    (직접 만든 도구는 가져올 출처가 없으므로).
+    받는 쪽 컴퓨터엔 이 도구가 없을 수 있다 — 대신 "어느 저장소(주소)의 어떤
+    도구들"인지를 싣는다. 세트는 도구 모음이라 여러 저장소를 걸칠 수 있다.
+    적용은 받는 쪽이 그 저장소를 **직접 등록한 뒤에만**(등록=신뢰 표명이라
+    세트가 대신 못 함) — set-export-plugin-mcp-gap을 닫는 길이다.
+    """
+
+    name: str  # 저장소 이름 (받는 쪽 repo add에 제안할 이름)
+    url: str  # git 주소 — 받는 쪽이 등록할 때 필요
+    tools: tuple[str, ...] = ()  # 그 저장소에서 설치할 도구(맨 이름)들
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "url": self.url, "tools": list(self.tools)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> RepoRef:
+        return cls(
+            name=data["name"],
+            url=data["url"],  # 주소 없는 참조는 형식 위반 — KeyError로 격리
+            tools=tuple(data.get("tools", ())),
+        )
+
+
+@dataclass(frozen=True)
+class SetItem:
+    """세트의 한 항목: 참조(source→install) · 임베드(embed) · 저장소(repo) 중 하나.
+
+    참조는 "어디서 가져올지"만 가리키고, 임베드는 본문을 통째로 품고(직접 만든
+    도구는 가져올 출처가 없으므로), 저장소는 등록할 주소와 그 안의 도구들을 가리킨다.
     """
 
     source: str = ""
     install: tuple[str, ...] = ()
     embed: EmbeddedTool | None = None
+    repo: RepoRef | None = None
 
     def to_dict(self) -> dict:
         if self.embed is not None:
             return {"embed": self.embed.to_dict()}
+        if self.repo is not None:
+            return {"repo": self.repo.to_dict()}
         data: dict = {"source": self.source}
         if self.install:
             data["install"] = list(self.install)
@@ -99,10 +128,11 @@ class StarterSet:
         }
 
     def install_count(self) -> int:
-        """표면에 올릴 총 개수 — 참조의 install 목록 + 임베드(임베드는 곧 올릴 것)."""
+        """표면에 올릴 총 개수 — 참조 install + 임베드 + 저장소 참조의 도구들."""
         refs = sum(len(item.install) for item in self.items)
         embeds = sum(1 for item in self.items if item.embed is not None)
-        return refs + embeds
+        repo_tools = sum(len(item.repo.tools) for item in self.items if item.repo)
+        return refs + embeds + repo_tools
 
     @classmethod
     def from_dict(cls, data: dict) -> StarterSet:
@@ -116,9 +146,11 @@ class StarterSet:
 
 
 def _item_from_dict(item: dict) -> SetItem:
-    """항목 하나를 읽는다 — embed면 본문 통째, 아니면 참조(source 필수)."""
+    """항목 하나를 읽는다 — embed(본문 통째)·repo(저장소 참조)·참조(source 필수)."""
     if "embed" in item:
         return SetItem(embed=EmbeddedTool.from_dict(item["embed"]))
+    if "repo" in item:
+        return SetItem(repo=RepoRef.from_dict(item["repo"]))
     return SetItem(source=item["source"], install=tuple(item.get("install", ())))
 
 

@@ -65,6 +65,9 @@ def promote_from_repo(
     staged = CatalogStore(catalog_dir=index_root / repo_name).get(tool_id)
     if staged is None:
         return None
+    # 출신 도장 — 세트 내보내기가 "이 도구는 저장소 것"임을 알아보는 근거(⑤).
+    # upstream(클론 경로)은 mcp 같은 연결형엔 없어서, source가 출신을 답한다.
+    staged = replace(staged, source=f"repo:{repo_name}")
 
     existing = catalog_store.get(tool_id)
     if existing is not None:
