@@ -71,6 +71,16 @@ def repos_dir() -> Path:
     return global_root() / "repos"
 
 
+def repo_index_root() -> Path:
+    """저장소 색인 티어의 뿌리(`~/.pouch/repo-index/<이름>/`) — Phase 4.8 ②.
+
+    클론(repos_dir)에서 파생된 도구 색인이 저장소별로 산다. 클론 안에 두지 않는
+    이유: git 작업 트리를 더럽히지 않기 위해. 로컬 대기실(sources_dir)과 섞지 않는
+    이유: 정체 `<저장소>/<도구>`의 저장소 칸을 자리가 답하게(레지스트리 패턴).
+    """
+    return global_root() / "repo-index"
+
+
 def registry_dir() -> Path:
     """당겨온 세트가 사는 별도 티어(`~/.pouch/registry/`) — 팀 공유 레지스트리의 클론.
 

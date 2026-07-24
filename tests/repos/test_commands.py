@@ -22,7 +22,12 @@ def _make_origin(root: Path) -> Path:
         ["git", "config", "commit.gpgsign", "false"],
     ):
         subprocess.run(args, cwd=root, check=True, capture_output=True)
-    (root / "SKILL.md").write_text("# 도구\n", encoding="utf-8")
+    # 아는 배치 하나(스킬) — 색인이 알아볼 수 있는 모양으로.
+    (root / "skills" / "deploy-helper").mkdir(parents=True)
+    (root / "skills" / "deploy-helper" / "SKILL.md").write_text(
+        "---\nname: deploy-helper\ndescription: deploy tool\n---\n\n# 본문\n",
+        encoding="utf-8",
+    )
     subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-q", "-m", "init"], cwd=root, check=True, capture_output=True
@@ -65,6 +70,39 @@ def test_conflicting_re_add_exits_nonzero(home: Path) -> None:
     assert result.exit_code == 1
     # rich가 임의 위치에서 줄을 접으므로 개행을 펴고 확인한다
     assert "다른 주소" in result.output.replace("\n", "")
+
+
+def test_add_indexes_and_reports_the_count(home: Path) -> None:
+    """조각 ② — add가 색인까지 하고 몇 개 알아봤는지 말한다."""
+    origin = _make_origin(home / "origin")
+
+    result = runner.invoke(app, ["repo", "add", "team", str(origin)])
+
+    assert result.exit_code == 0, result.output
+    assert "색인" in result.output
+    assert "1" in result.output  # 스킬 하나를 알아봄
+
+
+def test_list_shows_indexed_tool_counts(home: Path) -> None:
+    origin = _make_origin(home / "origin")
+    runner.invoke(app, ["repo", "add", "team", str(origin)])
+
+    result = runner.invoke(app, ["repo", "list"])
+
+    assert "도구 1개" in result.output.replace("\n", "")
+
+
+def test_remove_also_drops_the_index(home: Path, monkeypatch) -> None:
+    """색인은 클론의 파생물 — 등록을 지우면 유령으로 안 남는다."""
+    from pouch import paths
+
+    origin = _make_origin(home / "origin")
+    runner.invoke(app, ["repo", "add", "team", str(origin)])
+    assert (paths.repo_index_root() / "team").exists()
+
+    runner.invoke(app, ["repo", "remove", "team"])
+
+    assert not (paths.repo_index_root() / "team").exists()
 
 
 def test_remove_round_trips(home: Path) -> None:
