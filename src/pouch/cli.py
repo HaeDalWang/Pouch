@@ -19,6 +19,7 @@ from pouch.evolution.commands import app as evolve_app
 from pouch.hooks.commands import app as hook_app
 from pouch.init.commands import init as init_command
 from pouch.memory.commands import app as memory_app
+from pouch.repos.commands import app as repos_app
 from pouch.sets.commands import app as sets_app
 
 app = typer.Typer(
@@ -36,6 +37,7 @@ app.add_typer(hook_app, name="hook", help="🔌 에이전트 연결(hook) 관리
 app.add_typer(evolve_app, name="evolve", help="🌊 evolve — 쓸수록 손에 맞게, 안 쓰는 건 정리.")
 app.add_typer(checkpoint_app, name="checkpoint", help="🎯 정렬 체크포인트 — 이번 작업 목표를 고정한다.")
 app.add_typer(sets_app, name="set", help="🎒 set — 미리 꾸려진 한 벌(시작 세트).")
+app.add_typer(repos_app, name="repo", help="🗄️ repo — 도구 저장소 주소를 물어둔다 (helm repo처럼).")
 app.command(name="init", help="🪨 환경을 감지하고 나에게 맞춰 주머니를 채운다.")(init_command)
 app.command(name="backup", help="💾 전역 주머니를 아카이브로 백업한다.")(backup_command)
 app.command(name="restore", help="💾 백업 아카이브로 주머니를 되돌린다.")(restore_command)

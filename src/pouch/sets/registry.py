@@ -4,50 +4,23 @@ raft의 첫 문. 팀 공유 레지스트리 repo를 `~/.pouch/registry/`에 clon
 `git pull`로 멱등 갱신한다. 당겨온 세트는 별도 티어라 내가 만든 `~/.pouch/sets/`와
 안 섞이고, 이름 충돌 시 로컬(내 것)이 이긴다(개인 우선 — sets/model.available_sets).
 
-git은 shell-out한다(`status.py`의 `_git_revision`과 같은 패턴): 사용자의 기존 git
-인증(SSH/HTTPS)을 그대로 물려받고, 파이썬 git 라이브러리 의존성을 안 늘린다. 매체가
-git이라 버전·이력·되돌리기가 공짜다. 설계: docs/RAFT-DESIGN.md.
+git shell-out 헬퍼는 gitio로 뽑혀 나갔다(Phase 4.8 저장소 모델과 공용) — 인증
+승계·의존성 0 이유는 그쪽 문서 참조. 설계: docs/RAFT-DESIGN.md.
 """
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
-_TIMEOUT = 120  # clone/pull은 네트워크라 넉넉히(status의 2초와 다른 성격)
+from pouch.gitio import GitError, clone_url_of, run_git
 
-
-class RegistryError(Exception):
-    """레지스트리 조작 실패 — 호출부(CLI)가 사람 말로 옮겨 exit."""
-
-
-def _git(args: list[str], *, cwd: Path | None = None) -> str:
-    """git을 shell-out한다. 실패는 RegistryError로 옮긴다(멈춤 방지 타임아웃)."""
-    try:
-        result = subprocess.run(  # noqa: S603
-            ["git", *args],  # noqa: S607
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=_TIMEOUT,
-        )
-    except FileNotFoundError as exc:
-        raise RegistryError("git이 설치돼 있지 않습니다.") from exc
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise RegistryError(f"git 실행 실패: {exc}") from exc
-    if result.returncode != 0:
-        raise RegistryError(result.stderr.strip() or f"git {args[0]} 실패")
-    return result.stdout.strip()
+# 기존 호출부·테스트가 아는 이름 유지 — 같은 실패 종류의 별칭이다.
+RegistryError = GitError
 
 
 def remote_url(registry_dir: Path) -> str | None:
     """레지스트리의 origin 원격 URL. 클론 전이면 None."""
-    if not (registry_dir / ".git").exists():
-        return None
-    try:
-        return _git(["remote", "get-url", "origin"], cwd=registry_dir)
-    except RegistryError:
-        return None
+    return clone_url_of(registry_dir)
 
 
 def pull_registry(registry_dir: Path, *, url: str | None = None) -> str:
@@ -67,15 +40,15 @@ def pull_registry(registry_dir: Path, *, url: str | None = None) -> str:
                     f"이미 다른 레지스트리가 있습니다({existing}). "
                     f"바꾸려면 {registry_dir}를 지우고 다시 pull 하세요."
                 )
-            _git(["pull", "--ff-only"], cwd=registry_dir)
+            run_git(["pull", "--ff-only"], cwd=registry_dir)
         else:
             registry_dir.parent.mkdir(parents=True, exist_ok=True)
-            _git(["clone", url, str(registry_dir)])
+            run_git(["clone", url, str(registry_dir)])
         return url
 
     if not has_clone:
         raise RegistryError(
             "레지스트리가 없습니다. 처음엔 URL을 주세요: pouch set pull <git-url>"
         )
-    _git(["pull", "--ff-only"], cwd=registry_dir)
+    run_git(["pull", "--ff-only"], cwd=registry_dir)
     return remote_url(registry_dir) or ""

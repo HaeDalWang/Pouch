@@ -52,9 +52,68 @@ git log --grep='\[docs-later\]' --oneline
 - [README.md](README.md) / [ROADMAP.md](ROADMAP.md) / [BACKLOG.md](BACKLOG.md)
   — 왜 만드나 / 어떤 순서로 / 무엇을 안 하기로 했나
 
+## 코드 지도로 확인하기 (code-review-graph)
+
+오너는 코드를 직접 읽지 않는다. 그러니 에이전트의 "확인했다"는 말은
+**오너가 눈으로 볼 수 있는 증거**로 바뀌어야 한다. 그 증거를 싸게 뽑는 도구가
+code-review-graph — 저장소를 미리 훑어 "누가 무엇을 부르는지"를 지도로 만들어 둔다.
+
+- **무언가 지우거나 크게 바꾸기 전에**, 파일을 잔뜩 읽지 말고 지도에 먼저 묻는다.
+  `code-review-graph query callers_of <이름>` (누가 부르나) ·
+  `code-review-graph impact --files <경로>` (바꾸면 어디가 깨지나) ·
+  `code-review-graph query tests_for <이름>` (어떤 테스트가 지키나).
+  이름이 여러 곳에 겹치면 도구가 "정확한 이름으로 다시"라고 안내한다 — 그대로 따른다.
+  그 결과 목록을 오너에게 그대로 내민다 — "안전하다"가 아니라 "부르는 곳: (목록)".
+- **지도는 "지도"지 "심판"이 아니다.** 연결 관계(callers·impact·tests_for·architecture)는
+  믿어도 된다. 하지만 `dead-code`·큰 함수 "나쁨" 판정은 **오탐이 흔하다**
+  (이 저장소는 Typer 데코레이터로 함수를 간접 등록해서, 안 쓰는 것처럼 잘못 잡힌다).
+  이런 "판정"은 에이전트가 **한 번 직접 검증한 뒤** 오너에게 말한다.
+- 지도는 커밋될 때 `.githooks/post-commit`이 조용히 자동 갱신한다. 세션 중
+  방금 고친 걸 물을 땐 `code-review-graph update -q`를 먼저 돌려 지도를 맞춘다.
+- 지도 db(`.code-review-graph/`)는 `.gitignore`로 빠져 있어 커밋에 안 섞인다.
+
 ## pouch 철학 네 줄 — 코드에 손대기 전에
 
 - **제안만 한다.** 동의 없이 아무것도 안 움직인다. 자동으로 움직이는 건 기록뿐.
 - **떨어진다 ≠ 삭제된다.** 내리는 건 표면(연장통)에서 빼는 것이지 지우는 게 아니다.
 - **실사용이 증거다.** "이 역할이면 이거 쓰겠지" 같은 지어낸 큐레이션은 담지 않는다.
 - **설정은 대신 바꾸되 투명하게.** 설명 → 동의 → 백업이 항상 따라온다.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
+- **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
+- **Finding relationships**: `query_graph_tool` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview_tool` + `list_communities_tool`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes_tool` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context_tool` | Need source snippets for review — token-efficient |
+| `get_impact_radius_tool` | Understanding blast radius of a change |
+| `get_affected_flows_tool` | Finding which execution paths are impacted |
+| `query_graph_tool` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes_tool` | Finding functions/classes by name or keyword |
+| `get_architecture_overview_tool` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes_tool` for code review.
+3. Use `get_affected_flows_tool` to understand impact.
+4. Use `query_graph_tool` pattern="tests_for" to check coverage.

@@ -1,0 +1,16 @@
+#!/bin/sh
+# post-commit — 코드 지도(code-review-graph)를 최신으로 유지한다.
+#
+# 왜: 에이전트가 "누가 이걸 부르나 / 이거 바꾸면 어디가 깨지나"를 물을 때,
+#     매번 파일을 잔뜩 읽지 않고 미리 만들어 둔 지도에 물어보게 하려는 것.
+#     그 지도가 낡으면 소용없으니, 커밋될 때마다 바뀐 만큼만 조용히 갱신한다.
+#
+# 성질:
+#   - 커밋을 막지 않는다(post-commit은 커밋이 끝난 뒤 돈다).
+#   - 도구가 없으면 아무 일도 안 하고 통과한다.
+#   - 조용히(-q) 뒤에서 돌아 터미널을 붙잡지 않는다.
+#   - 그래프 db(.code-review-graph/)는 .gitignore로 빠져 있어 커밋에 안 섞인다.
+
+command -v code-review-graph >/dev/null 2>&1 || exit 0
+code-review-graph update -q >/dev/null 2>&1 &
+exit 0

@@ -61,6 +61,16 @@ def sets_dir() -> Path:
     return global_root() / "sets"
 
 
+def repos_dir() -> Path:
+    """등록한 도구 저장소들의 클론 자리(`~/.pouch/repos/<이름>/`) — Phase 4.8.
+
+    helm repo add의 pouch판. 여러 개가 이름으로 나란히 산다 — 단일 registry
+    (registry_dir, 세트 전용)와 달리 낱개 도구들의 주소를 물어두는 곳. 별도 장부
+    파일 없음: 클론 디렉토리와 git remote가 유일한 진실.
+    """
+    return global_root() / "repos"
+
+
 def registry_dir() -> Path:
     """당겨온 세트가 사는 별도 티어(`~/.pouch/registry/`) — 팀 공유 레지스트리의 클론.
 
