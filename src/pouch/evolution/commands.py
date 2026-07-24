@@ -273,30 +273,27 @@ def _render_try_this(plans: list[TryThis]) -> None:
         return
 
     console.print("\n💡 [bold]이거 써봐[/bold] (자주 쓰시는 것과 비슷한 것들)\n")
-    has_local = has_repo = False
+    has_repo = False
     for plan in plans:
         console.print(f"  [dim]{plan.anchor_id}와 비슷:[/dim]")
         for cand in plan.similar:
             notes = [f"비슷한 점: {', '.join(sorted(cand.shared_tokens))}"]
-            repo_name, _, _ = cand.entry.id.partition("/")
-            if "/" in cand.entry.id:
+            repo_name, sep, _ = cand.entry.id.partition("/")
+            if sep:
                 has_repo = True
                 notes.append(f"{repo_name} 저장소가 담고 있음")
-            else:
-                has_local = True
             console.print(
                 f"    • [cyan]{cand.entry.id}[/cyan] — {_clip(cand.entry.description)}"
                 f" [dim]({' · '.join(notes)})[/dim]"
             )
-    # 안내는 오늘 실재하는 명령만 — 없는 길을 지어내지 않는다(preview 정직성과 같은 결).
-    if has_local:
-        console.print(
-            "  [dim]써보려면: [cyan]pouch catalog install <이름>[/cyan]"
-            " (대기실 것은 이때 카탈로그로 들어옵니다)[/dim]"
-        )
+    # 설치 문은 하나 — 저장소 것도 <저장소>/<이름> 그대로 install에 넣으면 된다(④).
+    console.print(
+        "  [dim]써보려면: [cyan]pouch catalog install <이름>[/cyan]"
+        " (대기실·저장소 것은 이때 카탈로그로 들어옵니다)[/dim]"
+    )
     if has_repo:
         console.print(
-            "  [dim]저장소 후보 살펴보기: [cyan]pouch repo search <말>[/cyan][/dim]"
+            "  [dim]저장소 후보 더 보기: [cyan]pouch repo search <말>[/cyan][/dim]"
         )
 
 

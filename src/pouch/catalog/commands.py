@@ -30,7 +30,7 @@ from pouch.catalog.importer import (
 from pouch.catalog.boundary import recommended_boundary_memories
 from pouch.catalog.install import install_entry
 from pouch.catalog.model import SURFACE_PLUGIN, ToolEntry, ToolKind
-from pouch.catalog.promote import promote
+from pouch.catalog.promote import promote, promote_from_repo
 from pouch.catalog.store import CatalogStore
 from pouch.memory.store import MemoryStore
 from pouch.catalog.sync import SyncReport, moved_component, sync_all
@@ -375,7 +375,8 @@ def install(
 
     관문 (다): 명시 install도 진입 트리거다. 카탈로그에 없고 소스에만 있으면
     먼저 promote해 카탈로그로 진입시킨 뒤 표면에 올린다("일부러 골라 올림"은
-    실사용과 같은 진입 근거).
+    실사용과 같은 진입 근거). `<저장소>/<도구>` 꼴이면 등록한 저장소의 색인에서
+    들여온다(Phase 4.8 ④ — vendored의 원격판, 클론이 upstream이라 나머지는 동일).
     """
     catalog = CatalogStore()
     entry = catalog.get(entry_id)
@@ -385,8 +386,19 @@ def install(
             source_store=CatalogStore(catalog_dir=paths.sources_dir()),
             catalog_store=catalog,
         )
+    if entry is None and "/" in entry_id:
+        try:
+            entry = promote_from_repo(
+                entry_id, index_root=paths.repo_index_root(), catalog_store=catalog
+            )
+        except ValueError as exc:
+            console.print(f"[red]✗[/red] {exc}")
+            raise typer.Exit(code=1) from exc
     if entry is None:
-        console.print(f"[red]✗[/red] 카탈로그·소스에 '{entry_id}'가 없습니다. [cyan]pouch catalog list[/cyan]로 확인하세요.")
+        console.print(
+            f"[red]✗[/red] 카탈로그·소스·저장소 색인에 '{entry_id}'가 없습니다. "
+            "[cyan]pouch catalog list[/cyan] · [cyan]pouch repo search[/cyan]로 확인하세요."
+        )
         raise typer.Exit(code=1)
     if entry.surface == SURFACE_PLUGIN:
         console.print(

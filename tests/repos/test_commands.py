@@ -132,6 +132,41 @@ def test_search_miss_is_honest(home: Path) -> None:
     assert "없습니다" in result.output
 
 
+def test_install_from_repo_reaches_the_surface(home: Path, tmp_path: Path) -> None:
+    """조각 ④ 끝단 — repo add → catalog install <저장소>/<도구> → 표면 파일.
+
+    카탈로그 진입은 맨 이름으로(출처는 upstream이 말함), 설치는 기존 관문 그대로.
+    """
+    origin = _make_origin(home / "origin")
+    runner.invoke(app, ["repo", "add", "team", str(origin)])
+    skills_dir = tmp_path / "surface" / "skills"
+
+    result = runner.invoke(
+        app,
+        [
+            "catalog", "install", "team/deploy-helper",
+            "--skills-dir", str(skills_dir),
+            "--mcp-config", str(tmp_path / ".mcp.json"),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (skills_dir / "deploy-helper" / "SKILL.md").exists()
+
+    from pouch.catalog.store import CatalogStore
+
+    entered = CatalogStore().get("deploy-helper")
+    assert entered is not None  # 맨 이름으로 진입
+    assert "repos" in (entered.upstream or "")  # 출처는 클론 경로가 말한다
+
+
+def test_install_of_an_unknown_scoped_id_names_the_search_door(home: Path) -> None:
+    result = runner.invoke(app, ["catalog", "install", "ghost/tool"])
+
+    assert result.exit_code == 1
+    assert "repo search" in result.output.replace("\n", "")
+
+
 def test_remove_round_trips(home: Path) -> None:
     origin = _make_origin(home / "origin")
     runner.invoke(app, ["repo", "add", "team", str(origin)])
