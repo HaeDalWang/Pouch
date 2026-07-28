@@ -190,9 +190,18 @@ def backup_dir() -> Path:
 
 
 def find_project_root(start: Path | None = None) -> Path | None:
-    """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다."""
+    """`.pouch/` 또는 `.git`이 있는 가장 가까운 상위 디렉토리를 찾는다.
+
+    단, 홈 디렉토리 자체(및 그 위)는 프로젝트로 치지 않는다. 전역 pouch 루트가
+    `~/.pouch`라, `.git` 없는 폴더에서 일하면 위로 올라가다 홈에 도착해 그 `.pouch`
+    마커에 걸려 홈이 "프로젝트"로 오인됐다. 그러면 프로젝트 로컬 경로가 전역 경로와
+    겹쳐 사용 이벤트가 이중 기록된다(관측된 버그). 홈에서 탐색을 멈춰 그 뿌리를 끊는다.
+    """
     start = (start or Path.cwd()).resolve()
+    home = Path.home().resolve()
     for directory in (start, *start.parents):
+        if directory == home:
+            return None
         if (directory / ".pouch").is_dir() or (directory / ".git").exists():
             return directory
     return None

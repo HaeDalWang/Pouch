@@ -33,6 +33,54 @@ def test_find_project_root_returns_none_without_markers(tmp_path: Path) -> None:
     assert paths.find_project_root(tmp_path) is None
 
 
+def test_find_project_root_excludes_home(tmp_path: Path, monkeypatch) -> None:
+    # 홈에 .pouch가 있어도(전역 루트가 ~/.pouch다) 홈을 프로젝트로 치지 않는다.
+    # 그러지 않으면 .git 없는 폴더에서 일할 때 프로젝트 로그 경로가 전역과 겹쳐
+    # 사용 이벤트가 이중 기록된다(관측된 버그).
+    home = tmp_path / "home"
+    (home / ".pouch").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    work = home / "salt" / "proj"  # .git 없는 작업 폴더
+    work.mkdir(parents=True)
+
+    assert paths.find_project_root(work) is None
+
+
+def test_find_project_root_home_itself_is_none(tmp_path: Path, monkeypatch) -> None:
+    # 홈 디렉토리 자체를 start로 줘도 프로젝트가 아니다.
+    home = tmp_path / "home"
+    (home / ".pouch").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    assert paths.find_project_root(home) is None
+
+
+def test_find_project_root_detects_real_project_under_home(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 홈 제외는 홈 '아래'의 진짜 프로젝트(.git)까지 막으면 안 된다.
+    home = tmp_path / "home"
+    (home / ".pouch").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    proj = home / "work" / "repo"
+    (proj / ".git").mkdir(parents=True)
+
+    assert paths.find_project_root(proj / "src") == proj
+
+
+def test_project_usage_log_path_none_under_home_without_git(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 홈 오인이 사라지면 .git 없는 폴더의 프로젝트 로그는 없다 — 전역과 겹치지 않는다.
+    home = tmp_path / "home"
+    (home / ".pouch").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    work = home / "salt" / "ezl"
+    work.mkdir(parents=True)
+
+    assert paths.project_usage_log_path(work) is None
+
+
 def test_project_memory_dir_under_root(tmp_path: Path) -> None:
     # Arrange
     (tmp_path / ".git").mkdir()
