@@ -202,4 +202,12 @@ pouch memory recall <검색어>  # 키워드로 회상
 
 ---
 
+## 라이센스
+
+[PolyForm Noncommercial 1.0.0](LICENSE) — 개인 사용·연구·비영리 목적은 전부 무료다.
+회사·제품 등 상업적으로 쓰려면 별도 협의가 필요하다. 문의는
+[github.com/HaeDalWang](https://github.com/HaeDalWang)로.
+
+---
+
 made by [HaeDalWang](https://github.com/HaeDalWang) 🦦
