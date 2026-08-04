@@ -262,7 +262,7 @@ def _maybe_link_hook(yes: bool) -> None:
     "쓸수록 진화한다"가 시작조차 못 한다 — init만 돌린 사용자에게 특히 중요.
 
     이 머신에 있는 호스트만 대상으로 삼는다: 훅 호스트(Claude·Codex, 설정 폴더
-    존재)와 파일 호스트(Kiro, 전역 설치). 하나도 못 찾으면 조용히 안내만 남긴다 —
+    존재)와 파일 호스트(전역 설치). 하나도 못 찾으면 조용히 안내만 남긴다 —
     init은 관문이 아니다.
     """
     hooks = [a for a in detect_hook_installed() if not _hook_fully_linked(a)]

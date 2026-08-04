@@ -11,7 +11,6 @@ from pathlib import Path
 from pouch.hosts.base import LAYOUT_FILE, LAYOUT_PLUGIN_CACHE, LAYOUT_SKILLS_ROOT
 from pouch.hosts.claude import ClaudeAdapter
 from pouch.hosts.codex import CodexAdapter
-from pouch.hosts.kiro import KiroSteeringAdapter
 from pouch.hosts.registry import toolbox_hosts
 
 
@@ -34,21 +33,15 @@ def test_codex_toolbox_follows_codex_home(tmp_path, monkeypatch) -> None:
     assert paths_by_layout[LAYOUT_FILE] == tmp_path / "hooks.json"
 
 
-def test_kiro_has_a_skills_toolbox(tmp_path, monkeypatch) -> None:
-    """Kiro는 기억을 파일로만 받지만 도구통(skills/)은 따로 있다 — 실측 2026-07-21."""
-    monkeypatch.setenv("KIRO_HOME", str(tmp_path))
+def test_toolbox_hosts_covers_registered_hosts() -> None:
+    """도구통은 훅형/파일형과 직교한다 — 계약을 채운 하네스를 다 걷어온다.
 
-    boxes = KiroSteeringAdapter().toolbox_paths()
-
-    assert [box.path for box in boxes] == [tmp_path / "skills"]
-    assert boxes[0].layout == LAYOUT_SKILLS_ROOT
-
-
-def test_toolbox_hosts_covers_both_hook_and_file_hosts() -> None:
-    """도구통은 훅형/파일형과 직교한다 — 양쪽 다 걷어온다."""
+    파일 호스트는 지금 비어 있다(Kiro 지원 중단, BACKLOG P6). 그래도 이 함수는
+    양쪽 목록을 합쳐 본다 — 파일 호스트가 다시 생기면 코드 수정 없이 편입된다.
+    """
     names = {host.name for host in toolbox_hosts()}
 
-    assert {"claude", "codex", "kiro"} <= names
+    assert {"claude", "codex"} <= names
 
 
 def test_toolbox_paths_are_absolute() -> None:

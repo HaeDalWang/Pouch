@@ -19,15 +19,13 @@ runner = CliRunner()
 
 @pytest.fixture
 def hosts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    # Claude·Codex 디렉토리는 만들어 둔다(탐지 대상). Kiro(KIRO_HOME)는 없는 경로로
-    # 격리해 이 개발 머신의 실제 ~/.kiro steering 파일을 건드리지 않게 한다.
+    # Claude·Codex 디렉토리는 만들어 둔다(탐지 대상).
     claude = tmp_path / "claude"
     codex = tmp_path / "codex"
     claude.mkdir()
     codex.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude))
     monkeypatch.setenv("CODEX_HOME", str(codex))
-    monkeypatch.setenv("KIRO_HOME", str(tmp_path / "no-kiro"))
     monkeypatch.setenv("POUCH_HOME", str(tmp_path / "pouch"))
     monkeypatch.chdir(tmp_path)
     return tmp_path
@@ -63,11 +61,10 @@ def test_codex_shows_post_install_notes(hosts: Path) -> None:
     assert "[features]" in result.stdout
 
 
-def test_status_lists_all_hosts(hosts: Path) -> None:
+def test_status_lists_supported_hosts(hosts: Path) -> None:
     out = runner.invoke(app, ["status"]).stdout
     assert "Claude Code" in out
     assert "Codex" in out
-    assert "Kiro" in out
 
 
 def test_uninstall_specific_host(hosts: Path) -> None:
@@ -78,29 +75,12 @@ def test_uninstall_specific_host(hosts: Path) -> None:
     assert not data.get("hooks")
 
 
-def test_install_kiro_writes_steering_file(hosts: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Kiro 전역 홈을 실재하게 만들어 파일 호스트로 감지되게 한다.
-    kiro = hosts / "kiro-home"
-    kiro.mkdir()
-    monkeypatch.setenv("KIRO_HOME", str(kiro))
+def test_dropped_host_is_rejected_not_silently_ignored(hosts: Path) -> None:
+    """지원 중단한 하네스를 지정하면 정직하게 거절한다(BACKLOG P6).
 
+    조용히 성공한 척하면 사용자는 연결된 줄 안다 — 그게 제일 나쁘다.
+    """
     result = runner.invoke(app, ["install", "--host", "kiro", "--yes"])
-    assert result.exit_code == 0, result.stdout
-    steering = kiro / "steering" / "pouch-memory.md"
-    assert steering.exists()
-    assert steering.read_text(encoding="utf-8").startswith("---\ninclusion: always\n---")
-    # 파일 호스트는 사용 로깅이 없다는 안내가 정직하게 나와야 한다.
-    assert "사용 로깅" in result.stdout
 
-
-def test_uninstall_kiro_removes_steering_file(hosts: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    kiro = hosts / "kiro-home"
-    kiro.mkdir()
-    monkeypatch.setenv("KIRO_HOME", str(kiro))
-    runner.invoke(app, ["install", "--host", "kiro", "--yes"])
-    steering = kiro / "steering" / "pouch-memory.md"
-    assert steering.exists()
-
-    result = runner.invoke(app, ["uninstall", "--host", "kiro"])
-    assert result.exit_code == 0, result.stdout
-    assert not steering.exists()
+    assert result.exit_code == 1
+    assert "모르는 호스트" in result.stdout

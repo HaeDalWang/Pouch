@@ -1,6 +1,6 @@
 """호스트 어댑터 레지스트리 — 두 종류(훅·파일)를 이름으로 찾고 설치를 탐지한다.
 
-훅 호스트(Claude·Codex)는 JSON 설정에 명령을 걸고, 파일 호스트(Kiro)는 홈에 기억
+훅 호스트(Claude·Codex)는 JSON 설정에 명령을 걸고, 파일 호스트는 홈에 기억
 스냅샷을 쓴다. 하는 일이 달라 목록을 나눠 둔다 — 명령 계층이 종류별로 다르게 다룬다.
 순서는 등록 순서를 따른다(출력·처리가 결정적).
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 from pouch.hosts.base import FileHostAdapter, HostAdapter, ToolboxHost
 from pouch.hosts.claude import ClaudeAdapter
 from pouch.hosts.codex import CodexAdapter
-from pouch.hosts.kiro import KiroSteeringAdapter
 
 # 훅 호스트 — JSON 설정에 명령 훅(기억 주입 + 사용 로깅).
 _HOOK_ADAPTERS: tuple[HostAdapter, ...] = (
@@ -18,8 +17,11 @@ _HOOK_ADAPTERS: tuple[HostAdapter, ...] = (
     CodexAdapter(),
 )
 
-# 파일 호스트 — 홈에 기억 스냅샷 파일(사용 로깅 없음, 기억 바뀌면 자동 갱신).
-_FILE_ADAPTERS: tuple[FileHostAdapter, ...] = (KiroSteeringAdapter(),)
+# 파일 호스트 — 홈에 기억 스냅샷 파일. **지금은 비어 있다.**
+# Kiro가 유일한 파일 호스트였으나 2026-08-04 지원 중단(BACKLOG P6): 사용 기록을
+# 남길 길이 없어 반쪽만 되는데, 기록이 없으면 evolve·추천·세트가 전부 헛돈다.
+# 구조는 남긴다 — 파일로 연결하는 하네스가 다시 생기면 그대로 쓴다.
+_FILE_ADAPTERS: tuple[FileHostAdapter, ...] = ()
 
 
 def hook_adapters() -> tuple[HostAdapter, ...]:

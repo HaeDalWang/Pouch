@@ -164,10 +164,12 @@ def test_contract6_bare_pouch_shows_catalog_and_usage(tmp_path: Path) -> None:
 
 def test_contract7_hosts_block_shows_each_agent_and_blanks_file_usage() -> None:
     # 감지된 에이전트가 각자 한 줄로 보이고, 파일 호스트(usage=None)는 사용 칸이 "—".
+    # 파일 호스트는 지금 하나도 없지만(BACKLOG P6) 렌더 계약은 살아 있어야 한다 —
+    # 파일로 연결하는 하네스가 다시 오면 이 표시가 그대로 쓰인다.
     hosts = (
         HostLink(display_name="Claude Code", memory=True, usage=True),
         HostLink(display_name="Codex", memory=False, usage=False),
-        HostLink(display_name="Kiro", memory=True, usage=None),
+        HostLink(display_name="Snapshot Host", memory=True, usage=None),
     )
 
     status = build_status(
@@ -175,9 +177,9 @@ def test_contract7_hosts_block_shows_each_agent_and_blanks_file_usage() -> None:
     )
     text = "\n".join(render_lines(status))
 
-    assert "Claude Code" in text and "Codex" in text and "Kiro" in text
-    kiro_line = next(line for line in render_lines(status) if "Kiro" in line)
-    assert "—" in kiro_line  # 파일 호스트는 사용 로깅을 못 하므로 빈칸
+    assert "Claude Code" in text and "Codex" in text and "Snapshot Host" in text
+    file_host_line = next(line for line in render_lines(status) if "Snapshot Host" in line)
+    assert "—" in file_host_line  # 파일 호스트는 사용 로깅을 못 하므로 빈칸
 
 
 def test_contract8_no_hosts_guides_install() -> None:

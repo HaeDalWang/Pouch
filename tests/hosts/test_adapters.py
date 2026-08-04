@@ -13,7 +13,7 @@ from pouch.hosts.base import HostAdapter
 from pouch.hosts.claude import ClaudeAdapter
 from pouch.hosts.codex import CodexAdapter
 
-# 훅 호스트만 — Kiro는 파일 호스트라 계약이 다르다(test_kiro_steering.py에서 검증).
+# 훅 호스트만 — 파일 호스트는 계약이 다르다(test_filesync.py에서 검증).
 ADAPTERS = [ClaudeAdapter(), CodexAdapter()]
 IDS = [a.name for a in ADAPTERS]
 

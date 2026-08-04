@@ -5,7 +5,8 @@
 
 두 종류의 호스트를 함께 다룬다:
 - 훅 호스트(Claude·Codex): JSON 설정에 명령 훅(기억 주입 + 사용 로깅).
-- 파일 호스트(Kiro): 홈에 기억 스냅샷 파일(사용 로깅 없음, 기억 바뀌면 자동 갱신).
+- 파일 호스트: 홈에 기억 스냅샷 파일(사용 로깅 없음, 기억 바뀌면 자동 갱신).
+  지금은 등록된 것이 없다 — 유일했던 Kiro를 지원 중단했다(BACKLOG P6).
 지정 없이 부르면 이 머신에 있는 호스트 전체가 대상이다(탐지).
 """
 
@@ -29,7 +30,7 @@ from pouch.hosts.registry import (
 )
 
 app = typer.Typer(
-    help="🔌 hook — pouch를 에이전트(Claude Code·Codex·Kiro)에 연결.",
+    help="🔌 hook — pouch를 에이전트(Claude Code·Codex)에 연결.",
     no_args_is_help=True,
 )
 console = Console()
@@ -64,7 +65,7 @@ def _print_notes(adapter: HostAdapter | FileHostAdapter) -> None:
 @app.command("install")
 def install(
     host: str | None = typer.Option(
-        None, "--host", help="연결할 에이전트(claude·codex·kiro). 생략 시 감지된 전체."
+        None, "--host", help="연결할 에이전트(claude·codex). 생략 시 감지된 전체."
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="설명·확인 없이 바로 설치."),
 ) -> None:
@@ -148,7 +149,7 @@ def _install_file(adapter: FileHostAdapter, body: str) -> None:
 @app.command("uninstall")
 def uninstall(
     host: str | None = typer.Option(
-        None, "--host", help="해제할 에이전트(claude·codex·kiro). 생략 시 감지된 전체."
+        None, "--host", help="해제할 에이전트(claude·codex). 생략 시 감지된 전체."
     ),
 ) -> None:
     """추가했던 연결(훅 배선 또는 스냅샷 파일)을 제거한다."""

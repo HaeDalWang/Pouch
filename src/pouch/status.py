@@ -25,7 +25,7 @@ _LEARNED_TOP_N = 6  # 민낯 화면은 좁으니 상위 몇 개만
 class HostLink:
     """한 에이전트(호스트)의 연결 상태 한 줄.
 
-    usage가 None이면 파일 호스트(Kiro 부류) — 도구 사용 로깅을 못 하므로
+    usage가 None이면 파일 호스트 — 도구 사용 로깅을 못 하므로
     화면에서 "—"로 정직하게 비운다. 훅 호스트는 True/False로 켜짐 여부를 담는다.
     """
 
@@ -114,7 +114,7 @@ def _detect_hosts() -> tuple[HostLink, ...]:
     """이 머신에서 감지된 에이전트별 연결 상태를 모은다(IO).
 
     훅 호스트(Claude·Codex)는 설정 디렉토리가 있으면 대상 — 첫 연결 전에도 잡혀
-    "감지됐지만 아직 연결 안 됨(○)"이 보인다. 파일 호스트(Kiro)는 전역 설치 신호로
+    "감지됐지만 아직 연결 안 됨(○)"이 보인다. 파일 호스트는 전역 설치 신호로
     잡고, 사용 로깅이 불가하므로 usage=None으로 표시한다.
     """
     from pouch.hosts.registry import detect_file_supported, detect_hook_installed

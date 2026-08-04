@@ -310,36 +310,6 @@ def codex_skills_dir() -> Path:
     return codex_home() / "skills"
 
 
-def kiro_home() -> Path:
-    """Kiro 전역 루트(`~/.kiro/`) — 이 머신에 Kiro가 깔렸는지의 신호.
-
-    `KIRO_HOME` 환경변수로 오버라이드 가능(테스트/대체 설치 위치). Kiro 앱은 홈에
-    이 디렉토리를 만든다(steering·settings·sessions 등). 프로젝트별 `.kiro/`와
-    다른, 전역 설치 표식이다.
-    """
-    override = os.environ.get("KIRO_HOME")
-    return Path(override).expanduser() if override else Path.home() / ".kiro"
-
-
-def kiro_skills_dir() -> Path:
-    """Kiro 스킬 폴더(`~/.kiro/skills/`) — 실측 2026-07-21.
-
-    Kiro는 기억을 steering 파일로만 받지만(사용 로깅 불가) 도구통은 따로 있다.
-    "기억을 어떻게 넣나"와 "도구를 어디 두나"는 서로 다른 축이다.
-    """
-    return kiro_home() / "skills"
-
-
-def kiro_steering_path() -> Path:
-    """Kiro 전역 steering 파일(`~/.kiro/steering/pouch-memory.md`).
-
-    모든 워크스페이스에서 항상 읽히는 자리(inclusion: always). 그래서 여기엔
-    전역 기억만 담는다 — 프로젝트 기억을 넣으면 다른 프로젝트로 샌다. 훅과 달리
-    "한 번 찍는 사진"이라, 기억이 바뀌면 filesync가 다시 쓴다.
-    """
-    return kiro_home() / "steering" / "pouch-memory.md"
-
-
 def project_mcp_config_path(start: Path | None = None) -> Path:
     """현재 프로젝트의 `.mcp.json` 경로. 프로젝트 루트를 못 찾으면 cwd 기준."""
     root = find_project_root(start) or (start or Path.cwd())
