@@ -110,15 +110,23 @@ def _resolve_targets(
 
 
 def _install_hook(adapter: HostAdapter) -> None:
-    """훅 호스트에 두 배선(기억 주입 + 사용 로깅)을 건다. 이미 완료면 조용히 표시."""
+    """훅 호스트에 두 배선(기억 주입 + 사용 로깅)을 건다. 바꿀 게 없으면 조용히 표시.
+
+    판정은 "걸려 있나"가 아니라 **"바꿀 게 있나"**다. 배선의 형식이 바뀔 수 있기
+    때문 — 예컨대 사용 로깅 명령에 하네스 이름(`--host`)이 붙은 뒤로는, 옛 형식으로
+    걸린 사람도 갈아끼워져야 한다. "걸려 있나"로 물으면 옛 사용자는 영원히 옛
+    배선에 머문다. 조작 함수가 전부 멱등이라 이 비교만으로 충분하다.
+    """
     path = adapter.config_path()
     config = adapter.load(path)
-    if adapter.is_memory_installed(config) and adapter.is_usage_installed(config):
+    updated = adapter.with_usage_installed(adapter.with_memory_installed(config))
+    if updated == config:
         console.print(f"[green]✓[/green] {adapter.display_name}: 이미 연결돼 있습니다.")
         return
-    updated = adapter.with_usage_installed(adapter.with_memory_installed(config))
+    had_any = adapter.is_memory_installed(config) or adapter.is_usage_installed(config)
     backup = adapter.write(path, updated)
-    console.print(f"[green]✓[/green] {adapter.display_name} 연결 완료 → {path}")
+    verb = "갱신" if had_any else "연결"
+    console.print(f"[green]✓[/green] {adapter.display_name} {verb} 완료 → {path}")
     if backup:
         console.print(f"   백업: {backup}")
     _print_notes(adapter)

@@ -95,6 +95,57 @@ def test_install_registers_both_hooks(claude_dir: Path) -> None:
     assert "pouch evolve log --host claude" in _post_commands(settings)
 
 
+def test_install_upgrades_already_linked_old_hook(claude_dir: Path) -> None:
+    """이미 연결된 사람도 갈아끼워져야 한다.
+
+    옛 훅(출처 없음)도 '걸려 있음'으로 세다 보니, "이미 연결됨"으로 건너뛰면
+    옛 사용자는 영원히 출처 없는 기록만 쌓는다. 판정은 '걸려 있나'가 아니라
+    '바꿀 게 있나'여야 한다.
+    """
+    settings = claude_dir / "settings.json"
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {"hooks": [{"type": "command", "command": "pouch memory context"}]}
+                    ],
+                    "PostToolUse": [
+                        {
+                            "matcher": "Skill|mcp__.*",
+                            "hooks": [{"type": "command", "command": "pouch evolve log"}],
+                        },
+                        {
+                            "matcher": "Write",
+                            "hooks": [{"type": "command", "command": "make fmt"}],
+                        },
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner.invoke(app, ["install", "--yes"])
+
+    post = _post_commands(settings)
+    assert "pouch evolve log --host claude" in post
+    assert "pouch evolve log" not in post  # 옛 명령은 남지 않는다(중복 기록 방지)
+    assert "make fmt" in post  # 남의 훅은 그대로
+
+
+def test_install_twice_is_still_quiet(claude_dir: Path) -> None:
+    """바뀔 게 없으면 두 번째 install은 아무것도 안 쓴다(멱등)."""
+    runner.invoke(app, ["install", "--yes"])
+    settings = claude_dir / "settings.json"
+    before = settings.read_text(encoding="utf-8")
+
+    result = runner.invoke(app, ["install", "--yes"])
+
+    assert settings.read_text(encoding="utf-8") == before
+    assert "이미 연결" in result.stdout
+
+
 def test_uninstall_removes_both_hooks(claude_dir: Path) -> None:
     runner.invoke(app, ["install", "--yes"])
 
