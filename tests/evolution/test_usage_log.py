@@ -7,6 +7,7 @@
   ⑤ ts는 주입 — 로그는 시계를 만들지 않는다 (결정적)
   ⑥ host(어느 표면에서 왔나)는 있으면 싣고 없으면 아예 안 싣는다 — 옛 줄과 같은 꼴
   ⑦ host 없는 옛 줄도 읽힌다 (모름 = None, 소급 거짓말 안 함)
+  ⑧ session(한 세션 묶음)도 같은 규칙 — 있으면 싣고, 없으면 모름
 """
 
 from __future__ import annotations
@@ -86,6 +87,31 @@ def test_contract6_host_absent_keeps_old_shape(tmp_path: Path) -> None:
     append_event(UsageEvent(entry_id="aws-iam", ts="2026-08-04T10:00:00"), log_path=log)
 
     assert "host" not in log.read_text(encoding="utf-8")
+
+
+def test_contract8_session_is_carried_when_present(tmp_path: Path) -> None:
+    """같은 세션에서 뭘 같이 썼는지는 이 칸으로만 묶인다."""
+    log = tmp_path / "usage.jsonl"
+
+    append_event(
+        UsageEvent(entry_id="aws-iam", ts="2026-08-04T10:00:00", session_id="s-1"),
+        log_path=log,
+    )
+    append_event(
+        UsageEvent(entry_id="terraform", ts="2026-08-04T10:01:00", session_id="s-1"),
+        log_path=log,
+    )
+
+    events = read_events(log_path=log)
+    assert [e.session_id for e in events] == ["s-1", "s-1"]
+
+
+def test_contract8_session_absent_keeps_old_shape(tmp_path: Path) -> None:
+    log = tmp_path / "usage.jsonl"
+
+    append_event(UsageEvent(entry_id="aws-iam", ts="2026-08-04T10:00:00"), log_path=log)
+
+    assert "session_id" not in log.read_text(encoding="utf-8")
 
 
 def test_contract7_old_lines_without_host_read_as_unknown(tmp_path: Path) -> None:

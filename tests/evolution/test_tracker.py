@@ -9,6 +9,7 @@
   ④ 깨진/빈 페이로드 → None (hook이 절대 죽지 않는다)
   ⑤ record_usage: 매핑되면 ts를 붙여 로그에 append, 안 되면 무시
   ⑥ host(어느 표면에서 왔나)도 함께 실린다 — 안 넘기면 '모름'
+  ⑦ session_id는 페이로드에서 뽑는다 (Claude·Codex 둘 다 같은 이름으로 준다)
 """
 
 from __future__ import annotations
@@ -85,3 +86,41 @@ def test_contract6_record_without_host_is_unknown(tmp_path: Path) -> None:
     record_usage(payload, now="2026-08-04T12:00:00", log_path=log)
 
     assert read_events(log_path=log)[0].host is None
+
+
+def test_contract7_record_takes_session_from_payload(tmp_path: Path) -> None:
+    """세션은 훅이 아는 게 아니라 페이로드가 실어 온다 — 거기서만 뽑는다."""
+    log = tmp_path / "usage.jsonl"
+    payload = {
+        "session_id": "abc-123",
+        "tool_name": "Skill",
+        "tool_input": {"skill": "aws-iam"},
+    }
+
+    record_usage(payload, now="2026-08-04T12:00:00", log_path=log)
+
+    assert read_events(log_path=log)[0].session_id == "abc-123"
+
+
+def test_contract7_record_without_session_is_unknown(tmp_path: Path) -> None:
+    """세션을 안 싣는 하네스도 있을 수 있다 — 없으면 '모름', 죽지 않는다."""
+    log = tmp_path / "usage.jsonl"
+    payload = {"tool_name": "Skill", "tool_input": {"skill": "aws-iam"}}
+
+    record_usage(payload, now="2026-08-04T12:00:00", log_path=log)
+
+    assert read_events(log_path=log)[0].session_id is None
+
+
+def test_contract7_record_ignores_non_string_session(tmp_path: Path) -> None:
+    """엉뚱한 타입이 오면 무시한다 — 남의 페이로드 모양을 믿지 않는다."""
+    log = tmp_path / "usage.jsonl"
+    payload = {
+        "session_id": {"nested": "junk"},
+        "tool_name": "Skill",
+        "tool_input": {"skill": "aws-iam"},
+    }
+
+    record_usage(payload, now="2026-08-04T12:00:00", log_path=log)
+
+    assert read_events(log_path=log)[0].session_id is None

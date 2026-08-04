@@ -39,6 +39,16 @@ def entry_id_from_payload(payload: dict) -> str | None:
     return None
 
 
+def session_id_from_payload(payload: dict) -> str | None:
+    """페이로드에서 세션 식별자를 뽑는다. 없거나 문자열이 아니면 None.
+
+    Claude·Codex 둘 다 `session_id`라는 같은 이름으로 싣는다(문서 확인 2026-08-04).
+    안 싣는 하네스가 있어도 죽지 않는다 — 매핑 실패는 예외가 아니라 '모름'이다.
+    """
+    value = payload.get("session_id")
+    return value if isinstance(value, str) and value else None
+
+
 def record_usage(
     payload: dict, *, now: str, log_path: Path | None = None, host: str | None = None
 ) -> str | None:
@@ -53,5 +63,13 @@ def record_usage(
     entry_id = entry_id_from_payload(payload)
     if entry_id is None:
         return None
-    append_event(UsageEvent(entry_id=entry_id, ts=now, host=host), log_path=log_path)
+    append_event(
+        UsageEvent(
+            entry_id=entry_id,
+            ts=now,
+            host=host,
+            session_id=session_id_from_payload(payload),
+        ),
+        log_path=log_path,
+    )
     return entry_id

@@ -44,7 +44,7 @@ from pouch.evolution.orchestrate import (
 from pouch.evolution.preview import preview_attach, preview_drop
 from pouch.evolution.similar import TryThis
 from pouch.evolution.state import active_entries
-from pouch.evolution.tracker import record_usage
+from pouch.evolution.tracker import record_usage, session_id_from_payload
 from pouch.memory.evolve import plan_memory_hygiene, plan_memory_pending
 from pouch.memory.hygiene import HygieneCandidate
 from pouch.memory.model import MemoryEntry
@@ -86,7 +86,13 @@ def log(
             project_log = paths.project_usage_log_path()
             if project_log is not None:
                 append_event(
-                    UsageEvent(entry_id=entry_id, ts=now, host=host), log_path=project_log
+                    UsageEvent(
+                        entry_id=entry_id,
+                        ts=now,
+                        host=host,
+                        session_id=session_id_from_payload(payload),
+                    ),
+                    log_path=project_log,
                 )
     except Exception:  # noqa: BLE001
         # 추적은 절대 작업을 막지 않는다 — 무슨 일이 있어도 조용히 성공한다.
