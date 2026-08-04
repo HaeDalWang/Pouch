@@ -8,6 +8,7 @@
   ③ 추적 안 하는 툴(Bash/Edit…) → None
   ④ 깨진/빈 페이로드 → None (hook이 절대 죽지 않는다)
   ⑤ record_usage: 매핑되면 ts를 붙여 로그에 append, 안 되면 무시
+  ⑥ host(어느 표면에서 왔나)도 함께 실린다 — 안 넘기면 '모름'
 """
 
 from __future__ import annotations
@@ -65,3 +66,22 @@ def test_contract5_record_ignores_untracked(tmp_path: Path) -> None:
     record_usage({"tool_name": "Bash", "tool_input": {"command": "ls"}}, now="t", log_path=log)
 
     assert read_events(log_path=log) == []
+
+
+def test_contract6_record_carries_host(tmp_path: Path) -> None:
+    log = tmp_path / "usage.jsonl"
+    payload = {"tool_name": "Skill", "tool_input": {"skill": "aws-iam"}}
+
+    record_usage(payload, now="2026-08-04T12:00:00", log_path=log, host="codex")
+
+    assert read_events(log_path=log)[0].host == "codex"
+
+
+def test_contract6_record_without_host_is_unknown(tmp_path: Path) -> None:
+    """host를 안 넘기는 옛 호출부는 그대로 돌고, 출처는 '모름'으로 남는다."""
+    log = tmp_path / "usage.jsonl"
+    payload = {"tool_name": "Skill", "tool_input": {"skill": "aws-iam"}}
+
+    record_usage(payload, now="2026-08-04T12:00:00", log_path=log)
+
+    assert read_events(log_path=log)[0].host is None

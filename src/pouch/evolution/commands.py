@@ -69,19 +69,25 @@ def _now() -> str:
 
 
 @app.command("log")
-def log() -> None:
+def log(
+    host: str = typer.Option(
+        None, "--host", help="이 사용이 난 표면(claude·codex…). 훅이 자기 이름을 싣는다."
+    ),
+) -> None:
     """PostToolUse hook용: stdin 페이로드를 usage.jsonl에 적재(best-effort)."""
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw)
         now = _now()
-        entry_id = record_usage(payload, now=now)  # 전역 로그
+        entry_id = record_usage(payload, now=now, host=host)  # 전역 로그
         # P3(맥락 개인화 레인 2a): 프로젝트 안이면 그 repo의 로컬 사이드카에도 남긴다.
         # 프로젝트 경로·맥락은 로컬 전용이라 전역 백업으로 안 샌다.
         if entry_id is not None:
             project_log = paths.project_usage_log_path()
             if project_log is not None:
-                append_event(UsageEvent(entry_id=entry_id, ts=now), log_path=project_log)
+                append_event(
+                    UsageEvent(entry_id=entry_id, ts=now, host=host), log_path=project_log
+                )
     except Exception:  # noqa: BLE001
         # 추적은 절대 작업을 막지 않는다 — 무슨 일이 있어도 조용히 성공한다.
         pass

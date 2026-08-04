@@ -18,17 +18,26 @@ from pouch import paths
 
 @dataclass(frozen=True)
 class UsageEvent:
-    """한 번의 도구 사용. entry_id는 카탈로그 <id>, ts는 ISO8601 문자열."""
+    """한 번의 도구 사용. entry_id는 카탈로그 <id>, ts는 ISO8601 문자열.
+
+    host는 이 사용이 **어느 표면에서 났는지**다(claude·codex…). 훅이 하네스마다
+    따로 걸리므로 훅 명령이 자기 이름을 실어 보낸다. 이미 쌓인 줄엔 이 칸이 없어
+    None(모름)으로 읽는다 — 기록은 소급이 안 되니 지어내지 않는다.
+    """
 
     entry_id: str
     ts: str
+    host: str | None = None
 
     def to_json(self) -> str:
-        return json.dumps({"entry_id": self.entry_id, "ts": self.ts}, ensure_ascii=False)
+        data: dict[str, str] = {"entry_id": self.entry_id, "ts": self.ts}
+        if self.host:
+            data["host"] = self.host  # 모르면 아예 안 싣는다(옛 줄과 같은 꼴)
+        return json.dumps(data, ensure_ascii=False)
 
     @classmethod
     def from_dict(cls, data: dict) -> UsageEvent:
-        return cls(entry_id=data["entry_id"], ts=data["ts"])
+        return cls(entry_id=data["entry_id"], ts=data["ts"], host=data.get("host"))
 
 
 def append_event(event: UsageEvent, *, log_path: Path | None = None) -> None:

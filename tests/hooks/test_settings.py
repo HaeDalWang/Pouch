@@ -13,6 +13,7 @@ from pouch.hooks.settings import (
     load_settings,
     with_hook_installed,
     with_hook_removed,
+    usage_hook_command,
     with_usage_hook_installed,
     with_usage_hook_removed,
     write_settings,
@@ -126,6 +127,69 @@ def test_usage_hook_remove_keeps_session_start() -> None:
     removed = with_usage_hook_removed(settings)
     assert not is_usage_hook_installed(removed)
     assert is_installed(removed)  # SessionStart는 남는다
+
+
+# ── 사용 기록의 출처(어느 표면에서 왔나) ─────────────────────────────
+# 훅은 하네스마다 따로 걸리니, 명령에 자기 이름을 실어 보내면 로그가 출처를 갖는다.
+
+
+def test_usage_hook_command_carries_host() -> None:
+    assert usage_hook_command("claude") == "pouch evolve log --host claude"
+    assert usage_hook_command("codex") == "pouch evolve log --host codex"
+
+
+def test_usage_hook_command_without_host_stays_bare() -> None:
+    """호스트를 모르면 옛 명령 그대로 — 없는 출처를 지어내지 않는다."""
+    assert usage_hook_command(None) == POUCH_USAGE_HOOK_COMMAND
+
+
+def test_usage_hook_install_with_host_writes_host_flag() -> None:
+    installed = with_usage_hook_installed({}, host="codex")
+
+    assert _post_groups(installed)[0]["hooks"][0]["command"] == usage_hook_command("codex")
+    assert is_usage_hook_installed(installed)
+
+
+def test_usage_hook_install_with_host_is_idempotent() -> None:
+    once = with_usage_hook_installed({}, host="claude")
+    twice = with_usage_hook_installed(once, host="claude")
+    assert once == twice
+
+
+def test_usage_hook_install_upgrades_old_bare_command() -> None:
+    """이미 깔린 옛 훅은 갈아끼운다 — 나란히 두면 한 번 쓴 게 두 줄로 찍힌다."""
+    old = with_usage_hook_installed({})  # 옛 형식(출처 없음)
+
+    upgraded = with_usage_hook_installed(old, host="claude")
+
+    commands = [h["command"] for g in _post_groups(upgraded) for h in g.get("hooks", [])]
+    assert commands == [usage_hook_command("claude")]
+
+
+def test_usage_hook_detect_finds_old_bare_command() -> None:
+    """옛 형식도 '걸려 있음'으로 본다 — 중복 설치를 막는 판정이라."""
+    assert is_usage_hook_installed(with_usage_hook_installed({}))
+
+
+def test_usage_hook_remove_takes_hosted_command() -> None:
+    installed = with_usage_hook_installed({}, host="codex")
+    removed = with_usage_hook_removed(installed)
+
+    assert not is_usage_hook_installed(removed)
+    assert "hooks" not in removed
+
+
+def test_usage_hook_remove_keeps_foreign_posttooluse_hooks() -> None:
+    """남의 PostToolUse 훅은 안 건드린다 — 이름이 비슷해도 우리 것만 걷는다."""
+    settings = with_usage_hook_installed({}, host="claude")
+    settings["hooks"]["PostToolUse"].append(
+        {"matcher": "Write", "hooks": [{"type": "command", "command": "make fmt"}]}
+    )
+
+    removed = with_usage_hook_removed(settings)
+
+    commands = [h["command"] for g in _post_groups(removed) for h in g.get("hooks", [])]
+    assert commands == ["make fmt"]
 
 
 # ── 네이티브 메모리 스위치(A안 §1: pouch가 대체) ─────────────────────────

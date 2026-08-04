@@ -87,11 +87,12 @@ def test_install_declined_writes_nothing(claude_dir: Path) -> None:
 def test_install_registers_both_hooks(claude_dir: Path) -> None:
     # install은 SessionStart(기억 주입)와 PostToolUse(사용 로깅) 둘 다 건다.
     # 사용 로깅 hook이 걸려야 usage.jsonl이 쌓이고 evolve가 눈을 뜬다.
+    # 로깅 명령엔 하네스 이름이 실린다 — 그래야 기록이 "어디서 난 사용"인지 안다.
     runner.invoke(app, ["install", "--yes"])
 
     settings = claude_dir / "settings.json"
     assert "pouch memory context" in _commands(settings)
-    assert "pouch evolve log" in _post_commands(settings)
+    assert "pouch evolve log --host claude" in _post_commands(settings)
 
 
 def test_uninstall_removes_both_hooks(claude_dir: Path) -> None:

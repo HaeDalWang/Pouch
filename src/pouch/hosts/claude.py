@@ -87,7 +87,8 @@ class ClaudeAdapter:
         return is_usage_hook_installed(config)
 
     def with_usage_installed(self, config: dict) -> dict:
-        return with_usage_hook_installed(config)
+        # 자기 이름을 실어 보낸다 — 로그가 "어느 표면에서 난 사용인지"를 갖게.
+        return with_usage_hook_installed(config, host=self.name)
 
     def with_usage_removed(self, config: dict) -> dict:
         return with_usage_hook_removed(config)

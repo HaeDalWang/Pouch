@@ -40,15 +40,18 @@ def entry_id_from_payload(payload: dict) -> str | None:
 
 
 def record_usage(
-    payload: dict, *, now: str, log_path: Path | None = None
+    payload: dict, *, now: str, log_path: Path | None = None, host: str | None = None
 ) -> str | None:
     """페이로드가 추적 대상이면 ts를 붙여 로그에 append한다.
 
     now(현재 시각 ISO8601)는 주입한다 — hook 경계가 시각을 소유하고,
     순수 매핑은 시계를 만들지 않는다. 매핑된 entry_id를 반환(없으면 None).
+
+    host도 같은 이유로 주입한다 — 어느 표면에서 난 사용인지는 페이로드가 아니라
+    **어느 하네스의 훅이 불렀나**가 답이라, 명령 경계가 소유한다.
     """
     entry_id = entry_id_from_payload(payload)
     if entry_id is None:
         return None
-    append_event(UsageEvent(entry_id=entry_id, ts=now), log_path=log_path)
+    append_event(UsageEvent(entry_id=entry_id, ts=now, host=host), log_path=log_path)
     return entry_id

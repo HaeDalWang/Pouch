@@ -8,14 +8,26 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 # SessionStart에 등록할 명령. 이 문자열로 설치 여부를 식별한다.
 POUCH_HOOK_COMMAND = "pouch memory context"
 
 # PostToolUse에 등록할 사용 로깅 명령 + 매처(Skill·MCP 호출만 추적).
+# 이 문자열은 **접두사**로도 쓰인다 — 뒤에 `--host <이름>`이 붙어도 우리 훅으로 식별한다.
 POUCH_USAGE_HOOK_COMMAND = "pouch evolve log"
 POUCH_USAGE_HOOK_MATCHER = "Skill|mcp__.*"
+
+
+def usage_hook_command(host: str | None = None) -> str:
+    """사용 로깅 훅이 걸 명령. host를 실으면 로그가 출처를 갖는다.
+
+    훅은 하네스마다 따로 걸리니, 명령에 자기 이름을 실어 보내는 게 출처를 아는
+    유일한 길이다(페이로드엔 그 정보가 없다). 모르면 옛 명령 그대로 — 없는 출처를
+    지어내느니 '모름'으로 남긴다.
+    """
+    return f"{POUCH_USAGE_HOOK_COMMAND} --host {host}" if host else POUCH_USAGE_HOOK_COMMAND
 
 
 def load_settings(path: Path) -> dict:
@@ -26,13 +38,18 @@ def load_settings(path: Path) -> dict:
     return json.loads(raw) if raw else {}
 
 
-def _has_command(settings: dict, event: str, command: str) -> bool:
-    """특정 이벤트 그룹에 해당 명령이 등록돼 있는지."""
+def _any_command(settings: dict, event: str, matches: Callable[[str], bool]) -> bool:
+    """이벤트 그룹에 조건을 만족하는 명령이 하나라도 있는지."""
     for group in settings.get("hooks", {}).get(event, []):
         for hook in group.get("hooks", []):
-            if hook.get("command") == command:
+            if matches(hook.get("command") or ""):
                 return True
     return False
+
+
+def _has_command(settings: dict, event: str, command: str) -> bool:
+    """특정 이벤트 그룹에 해당 명령이 등록돼 있는지(정확히 같은 문자열)."""
+    return _any_command(settings, event, lambda c: c == command)
 
 
 def _with_group_added(settings: dict, event: str, group: dict, command: str) -> dict:
@@ -45,14 +62,19 @@ def _with_group_added(settings: dict, event: str, group: dict, command: str) -> 
     return updated
 
 
-def _with_command_removed(settings: dict, event: str, command: str) -> dict:
-    """이벤트에서 해당 명령만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
-    if not _has_command(settings, event, command):
+def _with_commands_removed(
+    settings: dict, event: str, matches: Callable[[str], bool]
+) -> dict:
+    """조건을 만족하는 명령만 걷어낸 새 설정. 빈 컨테이너는 정리한다.
+
+    남의 훅은 조건에 안 걸리므로 그대로 남는다 — 우리 것만 걷는다.
+    """
+    if not _any_command(settings, event, matches):
         return settings
     updated = copy.deepcopy(settings)
     cleaned_groups = []
     for group in updated.get("hooks", {}).get(event, []):
-        kept = [h for h in group.get("hooks", []) if h.get("command") != command]
+        kept = [h for h in group.get("hooks", []) if not matches(h.get("command") or "")]
         if kept:
             cleaned_groups.append({**group, "hooks": kept})
     if cleaned_groups:
@@ -62,6 +84,11 @@ def _with_command_removed(settings: dict, event: str, command: str) -> dict:
         if not updated["hooks"]:
             updated.pop("hooks", None)
     return updated
+
+
+def _with_command_removed(settings: dict, event: str, command: str) -> dict:
+    """이벤트에서 해당 명령만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
+    return _with_commands_removed(settings, event, lambda c: c == command)
 
 
 def is_installed(settings: dict) -> bool:
@@ -80,23 +107,42 @@ def with_hook_removed(settings: dict) -> dict:
     return _with_command_removed(settings, "SessionStart", POUCH_HOOK_COMMAND)
 
 
+def _is_usage_hook(command: str) -> bool:
+    """우리 사용 로깅 훅인지 — `--host` 유무와 무관하게 알아본다."""
+    return command == POUCH_USAGE_HOOK_COMMAND or command.startswith(
+        POUCH_USAGE_HOOK_COMMAND + " "
+    )
+
+
 def is_usage_hook_installed(settings: dict) -> bool:
-    """pouch PostToolUse 사용 로깅 hook이 이미 등록돼 있는지."""
-    return _has_command(settings, "PostToolUse", POUCH_USAGE_HOOK_COMMAND)
+    """pouch PostToolUse 사용 로깅 hook이 이미 등록돼 있는지(옛 형식 포함).
+
+    출처를 안 싣던 옛 명령도 '걸려 있음'으로 본다 — 중복 설치를 막는 판정이라
+    형식이 아니라 존재를 물어야 한다.
+    """
+    return _any_command(settings, "PostToolUse", _is_usage_hook)
 
 
-def with_usage_hook_installed(settings: dict) -> dict:
-    """사용 로깅 hook(PostToolUse)이 추가된 새 설정을 반환한다(멱등)."""
+def with_usage_hook_installed(settings: dict, host: str | None = None) -> dict:
+    """사용 로깅 hook(PostToolUse)이 추가된 새 설정을 반환한다(멱등).
+
+    이미 다른 형식으로 걸려 있으면 **갈아끼운다** — 옛 명령(출처 없음)과 새 명령을
+    나란히 두면 한 번 쓴 게 두 줄로 찍히기 때문이다.
+    """
+    command = usage_hook_command(host)
+    if _has_command(settings, "PostToolUse", command):
+        return settings  # 정확히 같은 명령이면 그대로(멱등)
+    without_old = _with_commands_removed(settings, "PostToolUse", _is_usage_hook)
     group = {
         "matcher": POUCH_USAGE_HOOK_MATCHER,
-        "hooks": [{"type": "command", "command": POUCH_USAGE_HOOK_COMMAND}],
+        "hooks": [{"type": "command", "command": command}],
     }
-    return _with_group_added(settings, "PostToolUse", group, POUCH_USAGE_HOOK_COMMAND)
+    return _with_group_added(without_old, "PostToolUse", group, command)
 
 
 def with_usage_hook_removed(settings: dict) -> dict:
-    """사용 로깅 hook만 제거한 새 설정을 반환한다. 빈 컨테이너는 정리한다."""
-    return _with_command_removed(settings, "PostToolUse", POUCH_USAGE_HOOK_COMMAND)
+    """사용 로깅 hook만 제거한 새 설정을 반환한다(형식 무관). 빈 컨테이너는 정리한다."""
+    return _with_commands_removed(settings, "PostToolUse", _is_usage_hook)
 
 
 def _recipe_commands(recipe: dict) -> list[str]:
